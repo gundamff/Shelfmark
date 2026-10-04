@@ -29,14 +29,6 @@ type AutoCatSummary = {
   addMemberOps: number;
 };
 
-type EnrichReport = {
-  fromCache: number;
-  fetched: number;
-  failed: number;
-  alreadyPresent: number;
-  skippedBudget: number;
-};
-
 type AppConfig = {
   last_user_id3?: string | null;
   steam_path_override?: string | null;
@@ -64,6 +56,8 @@ function App() {
   const [gameQuery, setGameQuery] = useState("");
   const [metaCoverage, setMetaCoverage] = useState<number | null>(null);
   const [enrichReport, setEnrichReport] = useState<string | null>(null);
+  const [enrichRunning, setEnrichRunning] = useState(false);
+  const [enrichDetail, setEnrichDetail] = useState<string | null>(null);
   const [localePref, setLocalePref] = useState<LocalePreference>("system");
   const [apiKey, setApiKey] = useState("");
 
@@ -107,13 +101,13 @@ function App() {
     });
   }, []);
 
-  const refreshMetaCoverage = async () => {
+  const refreshMetaCoverage = useCallback(async () => {
     try {
       setMetaCoverage(await invoke<number>("metadata_coverage"));
     } catch {
       setMetaCoverage(null);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -143,6 +137,36 @@ function App() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!enrichRunning) return;
+    const id = window.setInterval(() => {
+      void (async () => {
+        try {
+          const s = await invoke<{
+            running: boolean;
+            total: number;
+            done: number;
+            fromLocal: number;
+            fromStore: number;
+            failed: number;
+            remaining: number;
+            stopped: boolean;
+          }>("enrich_status");
+          setEnrichDetail(
+            `${s.done}/${s.total} · local ${s.fromLocal} · store ${s.fromStore} · fail ${s.failed} · left ${s.remaining}`,
+          );
+          if (!s.running) {
+            setEnrichRunning(false);
+            await refreshMetaCoverage();
+          }
+        } catch {
+          setEnrichRunning(false);
+        }
+      })();
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [enrichRunning, refreshMetaCoverage]);
 
   const sessionChip = session
     ? tr("sessionChip", {
@@ -231,21 +255,17 @@ function App() {
               })
             }
             onEnrich={() =>
-              run("enrich_metadata", async () => {
-                const r = await invoke<EnrichReport>("enrich_metadata", {
-                  maxFetch: 40,
-                });
-                setEnrichReport(
-                  tr("enrichReport", {
-                    fromCache: r.fromCache,
-                    fetched: r.fetched,
-                    failed: r.failed,
-                    skippedBudget: r.skippedBudget,
-                  }),
-                );
-                await refreshMetaCoverage();
+              run("enrich_start", async () => {
+                await invoke("enrich_start", { maxFetch: 40 });
+                setEnrichRunning(true);
+                setEnrichReport(null);
               })
             }
+            onEnrichStop={() => {
+              void invoke("enrich_stop");
+            }}
+            enrichRunning={enrichRunning}
+            enrichDetail={enrichDetail}
             onSaveApiKey={() =>
               run("save_api_key", async () => {
                 await invoke("save_api_key", { apiKey: apiKey.trim() });

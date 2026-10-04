@@ -35,6 +35,9 @@ type Props = {
   onOpenDemo: () => void;
   onOpenLive: () => void;
   onEnrich: () => void;
+  onEnrichStop: () => void;
+  enrichRunning: boolean;
+  enrichDetail: string | null;
   onSaveApiKey: () => void;
   t: (key: MessageKey, params?: Record<string, string | number>) => string;
 };
@@ -57,6 +60,9 @@ export function SettingsPage({
   onOpenDemo,
   onOpenLive,
   onEnrich,
+  onEnrichStop,
+  enrichRunning,
+  enrichDetail,
   onSaveApiKey,
   t,
 }: Props) {
@@ -173,10 +179,22 @@ export function SettingsPage({
           </div>
         )}
         <div className="row" style={{ marginTop: "0.75rem" }}>
-          <button type="button" disabled={busy || !session} onClick={onEnrich}>
+          <button
+            type="button"
+            disabled={busy || !session || enrichRunning}
+            onClick={onEnrich}
+          >
             {t("enrichMetadata")}
           </button>
+          <button
+            type="button"
+            disabled={!enrichRunning}
+            onClick={onEnrichStop}
+          >
+            Stop
+          </button>
         </div>
+        {enrichDetail && <p className="muted">{enrichDetail}</p>}
         {enrichReport && <p className="muted">{enrichReport}</p>}
       </section>
     </>

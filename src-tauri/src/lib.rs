@@ -1,9 +1,12 @@
 mod enrich;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::thread;
 
 use serde::Serialize;
+use tauri::Manager;
 use steam_core::{
     load_live_library, load_owned_games, run_preset, AppConfig, AutoCatPreset, AutoCatResult,
     AutoCatRule, BackupManager, Collection, CollectionChangeset, CollectionStore, Game,
@@ -13,10 +16,15 @@ use steam_core::{
 #[cfg(windows)]
 use steam_core::WindowsSteamPlatform;
 
-use crate::enrich::{enrich_metadata_index, EnrichReport, MetaCache};
+use crate::enrich::{
+    enrich_metadata_index, enrich_metadata_index_with_progress, EnrichReport, EnrichStatus,
+    MetaCache,
+};
 
 struct AppState {
     inner: Mutex<Option<SessionBundle>>,
+    enrich: Mutex<EnrichStatus>,
+    enrich_stop: AtomicBool,
 }
 
 #[derive(Clone, Copy)]
@@ -391,6 +399,82 @@ fn enrich_metadata(
 }
 
 #[tauri::command]
+fn enrich_status(state: tauri::State<'_, AppState>) -> Result<EnrichStatus, String> {
+    Ok(state.enrich.lock().map_err(|e| e.to_string())?.clone())
+}
+
+#[tauri::command]
+fn enrich_stop(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.enrich_stop.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+fn enrich_start(
+    app: tauri::AppHandle,
+    max_fetch: Option<u32>,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    {
+        let enrich = state.enrich.lock().map_err(|e| e.to_string())?;
+        if enrich.running {
+            return Err("enrich already running".into());
+        }
+    }
+    state.enrich_stop.store(false, Ordering::SeqCst);
+
+    let budget = max_fetch.unwrap_or(40) as usize;
+    let ids = {
+        let guard = state.inner.lock().map_err(|e| e.to_string())?;
+        let bundle = guard.as_ref().ok_or_else(|| "no session open".to_string())?;
+        bundle
+            .session
+            .games
+            .iter()
+            .map(|g| g.app_id)
+            .collect::<Vec<_>>()
+    };
+
+    {
+        let mut enrich = state.enrich.lock().map_err(|e| e.to_string())?;
+        *enrich = EnrichStatus {
+            running: true,
+            total: ids.len() as u32,
+            done: 0,
+            from_local: 0,
+            from_store: 0,
+            failed: 0,
+            remaining: ids.len() as u32,
+            stopped: false,
+        };
+    }
+
+    thread::spawn(move || {
+        let state = app.state::<AppState>();
+        let Ok(mut guard) = state.inner.lock() else {
+            return;
+        };
+        let Some(bundle) = guard.as_mut() else {
+            return;
+        };
+        let mut on_progress = |s: &EnrichStatus| {
+            if let Ok(mut slot) = state.enrich.lock() {
+                *slot = s.clone();
+            }
+        };
+        let _ = enrich_metadata_index_with_progress(
+            &mut bundle.meta,
+            &ids,
+            budget,
+            Some(&mut on_progress),
+            Some(&|| state.enrich_stop.load(Ordering::SeqCst)),
+        );
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
 fn metadata_coverage(state: tauri::State<'_, AppState>) -> Result<u32, String> {
     let guard = state.inner.lock().map_err(|e| e.to_string())?;
     let bundle = guard.as_ref().ok_or_else(|| "no session open".to_string())?;
@@ -457,6 +541,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             inner: Mutex::new(None),
+            enrich: Mutex::new(EnrichStatus::default()),
+            enrich_stop: AtomicBool::new(false),
         })
         .invoke_handler(tauri::generate_handler![
             detect_steam,
@@ -478,6 +564,9 @@ pub fn run() {
             run_autocat_genre,
             queue_last_autocat,
             enrich_metadata,
+            enrich_start,
+            enrich_status,
+            enrich_stop,
             metadata_coverage,
             export_session
         ])
