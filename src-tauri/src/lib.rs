@@ -8,7 +8,7 @@ use steam_core::{
     load_live_library, load_owned_games, run_preset, AppConfig, AutoCatPreset, AutoCatResult,
     AutoCatRule, BackupManager, Collection, CollectionChangeset, CollectionStore, Game,
     GameMetadata, JsonCollectionStore, MetadataIndex, Session, SteamCloudCatalogStore,
-    SteamPlatform,
+    SteamCompatInfo, SteamPlatform,
 };
 #[cfg(windows)]
 use steam_core::WindowsSteamPlatform;
@@ -39,6 +39,10 @@ struct SteamInfo {
     root: String,
     users: Vec<String>,
     steam_running: bool,
+    supported_steam: String,
+    supported_steam_note: String,
+    detected_steam_version: Option<String>,
+    steam_within_support: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -82,16 +86,39 @@ fn detect_steam() -> Result<SteamInfo, String> {
         let root = platform.steam_root().map_err(map_err)?;
         let users = platform.list_user_ids3(&root).map_err(map_err)?;
         let steam_running = platform.is_steam_running().map_err(map_err)?;
+        let compat = SteamCompatInfo::probe(&root);
         return Ok(SteamInfo {
             root: root.display().to_string(),
             users,
             steam_running,
+            supported_steam: compat.supported_label,
+            supported_steam_note: compat.supported_note,
+            detected_steam_version: compat.detected_version,
+            steam_within_support: compat.within_support,
         });
     }
     #[cfg(not(windows))]
     {
         Err("Steam detection is Windows-only in this MVP".into())
     }
+}
+
+#[tauri::command]
+fn steam_compat(steam_root: Option<String>) -> SteamCompatInfo {
+    match steam_root {
+        Some(root) if !root.is_empty() => SteamCompatInfo::probe(PathBuf::from(root).as_path()),
+        _ => SteamCompatInfo {
+            supported_label: steam_core::SUPPORTED_STEAM_LAYOUT.to_string(),
+            supported_note: steam_core::SUPPORTED_STEAM_NOTE.to_string(),
+            detected_version: None,
+            within_support: None,
+        },
+    }
+}
+
+#[tauri::command]
+fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
@@ -422,6 +449,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             detect_steam,
+            steam_compat,
+            app_version,
             is_steam_running,
             open_demo_session,
             open_live_session,
