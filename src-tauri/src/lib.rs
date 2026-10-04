@@ -1,3 +1,5 @@
+mod enrich;
+
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -10,6 +12,8 @@ use steam_core::{
 };
 #[cfg(windows)]
 use steam_core::WindowsSteamPlatform;
+
+use crate::enrich::{enrich_metadata_index, EnrichReport, MetaCache};
 
 struct AppState {
     inner: Mutex<Option<SessionBundle>>,
@@ -193,8 +197,14 @@ fn open_live_session(
             .collect();
         let games = load_live_library(&root, &user_id3, &collection_ids).map_err(map_err)?;
 
-        // Live AutoCat metadata is empty for now — Genre will skip until enrichment lands.
-        let meta = MetadataIndex::new();
+        // Seed from disk cache; call enrich_metadata for store fills.
+        let cache = MetaCache::load();
+        let mut meta = MetadataIndex::new();
+        for g in &games {
+            if let Some(m) = cache.apps.get(&g.app_id) {
+                meta.insert(g.app_id, m.clone());
+            }
+        }
 
         let session = Session::new(games.clone(), collections.clone(), vec![store_path.clone()]);
         let summary = SessionSummary {
@@ -320,6 +330,30 @@ fn run_autocat_genre(state: tauri::State<'_, AppState>) -> Result<AutoCatSummary
 }
 
 #[tauri::command]
+fn enrich_metadata(
+    max_fetch: Option<u32>,
+    state: tauri::State<'_, AppState>,
+) -> Result<EnrichReport, String> {
+    let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
+    let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
+    let ids: Vec<_> = bundle.session.games.iter().map(|g| g.app_id).collect();
+    let budget = max_fetch.unwrap_or(40) as usize;
+    enrich_metadata_index(&mut bundle.meta, &ids, budget)
+}
+
+#[tauri::command]
+fn metadata_coverage(state: tauri::State<'_, AppState>) -> Result<u32, String> {
+    let guard = state.inner.lock().map_err(|e| e.to_string())?;
+    let bundle = guard.as_ref().ok_or_else(|| "no session open".to_string())?;
+    let n = bundle
+        .meta
+        .values()
+        .filter(|m| !m.genres.is_empty())
+        .count();
+    Ok(n as u32)
+}
+
+#[tauri::command]
 fn queue_last_autocat(state: tauri::State<'_, AppState>) -> Result<CollectionChangeset, String> {
     let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
     let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
@@ -390,6 +424,8 @@ pub fn run() {
             remove_games_from_collection,
             run_autocat_genre,
             queue_last_autocat,
+            enrich_metadata,
+            metadata_coverage,
             export_session
         ])
         .run(tauri::generate_context!())

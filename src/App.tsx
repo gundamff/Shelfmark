@@ -30,6 +30,14 @@ type AutoCatSummary = {
   addMemberOps: number;
 };
 
+type EnrichReport = {
+  fromCache: number;
+  fetched: number;
+  failed: number;
+  alreadyPresent: number;
+  skippedBudget: number;
+};
+
 type AppConfig = {
   last_user_id3?: string | null;
   steam_path_override?: string | null;
@@ -49,6 +57,9 @@ function App() {
   const [selectedGames, setSelectedGames] = useState<number[]>([]);
   const [targetCollection, setTargetCollection] = useState<string>("");
   const [newCollectionName, setNewCollectionName] = useState("");
+  const [gameQuery, setGameQuery] = useState("");
+  const [metaCoverage, setMetaCoverage] = useState<number | null>(null);
+  const [enrichReport, setEnrichReport] = useState<string | null>(null);
 
   const run = useCallback(async (label: string, fn: () => Promise<void>) => {
     setBusy(true);
@@ -94,6 +105,22 @@ function App() {
     setSelectedGames((prev) =>
       prev.includes(appId) ? prev.filter((id) => id !== appId) : [...prev, appId],
     );
+  };
+
+  const filteredGames = games.filter((g) => {
+    const q = gameQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      g.name.toLowerCase().includes(q) || String(g.app_id).includes(q)
+    );
+  });
+
+  const refreshMetaCoverage = async () => {
+    try {
+      setMetaCoverage(await invoke<number>("metadata_coverage"));
+    } catch {
+      setMetaCoverage(null);
+    }
   };
 
   return (
@@ -150,7 +177,9 @@ function App() {
                 setAutocat(null);
                 setExportMsg(null);
                 setSelectedGames([]);
+                setEnrichReport(null);
                 await refreshLists();
+                await refreshMetaCoverage();
               })
             }
           >
@@ -179,7 +208,9 @@ function App() {
                 setAutocat(null);
                 setExportMsg(null);
                 setSelectedGames([]);
+                setEnrichReport(null);
                 await refreshLists();
+                await refreshMetaCoverage();
               })
             }
           >
@@ -284,8 +315,18 @@ function App() {
           <section className="panel split">
             <div>
               <h2>Games</h2>
+              <input
+                value={gameQuery}
+                placeholder="Search name or app id"
+                onChange={(e) => setGameQuery(e.target.value)}
+                style={{ marginBottom: "0.6rem", width: "100%" }}
+              />
+              <p className="muted">
+                Showing {filteredGames.length} / {games.length}
+                {metaCoverage != null ? ` · meta ${metaCoverage}` : ""}
+              </p>
               <ul className="checklist">
-                {games.map((g) => (
+                {filteredGames.map((g) => (
                   <li key={g.app_id}>
                     <label>
                       <input
@@ -319,8 +360,24 @@ function App() {
           </section>
 
           <section className="panel">
-            <h2>AutoCat (Genre)</h2>
+            <h2>Metadata + AutoCat</h2>
             <div className="row">
+              <button
+                disabled={busy}
+                onClick={() =>
+                  run("enrich_metadata", async () => {
+                    const r = await invoke<EnrichReport>("enrich_metadata", {
+                      maxFetch: 40,
+                    });
+                    setEnrichReport(
+                      `cache ${r.fromCache}, fetched ${r.fetched}, failed ${r.failed}, budget-skip ${r.skippedBudget}`,
+                    );
+                    await refreshMetaCoverage();
+                  })
+                }
+              >
+                Enrich metadata (40/batch)
+              </button>
               <button
                 disabled={busy}
                 onClick={() =>
@@ -345,6 +402,7 @@ function App() {
                 Queue into pending
               </button>
             </div>
+            {enrichReport && <p className="muted">Enrich: {enrichReport}</p>}
             {autocat && (
               <p className="muted">
                 matched {autocat.matchedGames}, skipped {autocat.skippedMissingMeta},

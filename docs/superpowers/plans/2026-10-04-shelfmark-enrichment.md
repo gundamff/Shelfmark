@@ -8,7 +8,7 @@
 
 ## Tasks
 
-- [ ] Task 1: meta cache load/save + store appdetails parser (unit-testable pure fn)
-- [ ] Task 2: `enrich_metadata` command (batch, skip cached, polite delay)
-- [ ] Task 3: UI search filter + Enrich button
-- [ ] Task 4: verify + merge
+- [x] Task 1: meta cache load/save + store appdetails parser (unit-testable pure fn)
+- [x] Task 2: `enrich_metadata` command (batch, skip cached, polite delay)
+- [x] Task 3: UI search filter + Enrich button
+- [x] Task 4: verify + merge
