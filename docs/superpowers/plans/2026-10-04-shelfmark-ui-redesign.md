@@ -67,7 +67,7 @@ fn probe_missing_root_is_none() {
 
 ---
 
-### Task 2: App shell (tabs, About, compat line, i18n)
+### Task 2: App shell (tabs, About, compat line, i18n) <!-- DONE -->
 
 **Files:**
 - Create: `src/components/AppShell.tsx`, `src/components/AboutDialog.tsx`, `src/components/SteamCompatBar.tsx`
