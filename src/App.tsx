@@ -40,6 +40,7 @@ function App() {
   const [autocat, setAutocat] = useState<AutoCatSummary | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<string>("");
 
   const run = useCallback(async (label: string, fn: () => Promise<void>) => {
     setBusy(true);
@@ -83,7 +84,11 @@ function App() {
           disabled={busy}
           onClick={() =>
             run("detect_steam", async () => {
-              setSteam(await invoke<SteamInfo>("detect_steam"));
+              const info = await invoke<SteamInfo>("detect_steam");
+              setSteam(info);
+              if (info.users.length > 0) {
+                setSelectedUser((prev) => prev || info.users[0]);
+              }
             })
           }
         >
@@ -103,20 +108,49 @@ function App() {
 
       <section className="panel">
         <h2>Session</h2>
-        <button
-          disabled={busy}
-          onClick={() =>
-            run("open_demo_session", async () => {
-              const s = await invoke<SessionSummary>("open_demo_session");
-              setSession(s);
-              setAutocat(null);
-              setExportMsg(null);
-              await refreshLists();
-            })
-          }
-        >
-          Open demo session
-        </button>
+        <div className="row">
+          <button
+            disabled={busy}
+            onClick={() =>
+              run("open_demo_session", async () => {
+                const s = await invoke<SessionSummary>("open_demo_session");
+                setSession(s);
+                setAutocat(null);
+                setExportMsg(null);
+                await refreshLists();
+              })
+            }
+          >
+            Open demo session
+          </button>
+          <select
+            value={selectedUser}
+            disabled={!steam || busy}
+            onChange={(e) => setSelectedUser(e.target.value)}
+          >
+            {(steam?.users ?? []).map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+          <button
+            disabled={busy || !selectedUser}
+            onClick={() =>
+              run("open_live_session", async () => {
+                const s = await invoke<SessionSummary>("open_live_session", {
+                  userId3: selectedUser,
+                });
+                setSession(s);
+                setAutocat(null);
+                setExportMsg(null);
+                await refreshLists();
+              })
+            }
+          >
+            Open live session
+          </button>
+        </div>
         {session && (
           <dl className="kv">
             <dt>Mode</dt>

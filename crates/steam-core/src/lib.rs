@@ -14,9 +14,10 @@ pub use autocat::{
 pub use backup::BackupManager;
 pub use collections::{
     apply_changeset, CollectionStore, JsonCollectionStore, LevelDbCollectionStore,
+    SteamCloudCatalogStore,
 };
 pub use error::{Error, Result};
-pub use library::load_owned_games;
+pub use library::{load_live_library, load_owned_games};
 pub use platform::{MockSteamPlatform, SteamPlatform};
 pub use session::Session;
 pub use types::{AppId, Collection, CollectionChangeset, Game};

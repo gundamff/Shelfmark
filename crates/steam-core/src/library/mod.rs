@@ -1,9 +1,13 @@
+pub mod live;
+
 use std::path::Path;
 
 use serde::Deserialize;
 
 use crate::types::Game;
 use crate::{Error, Result};
+
+pub use live::{load_installed_games, load_live_library, merge_library_with_app_ids};
 
 #[derive(Debug, Deserialize)]
 struct OwnedGameDto {

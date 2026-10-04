@@ -1,0 +1,6 @@
+[
+  ["GameReleased", {"key": "GameReleased", "timestamp": 100, "value": "{\"apps\":[]}", "version": "1"}],
+  ["user-collections.c-indie", {"key": "user-collections.c-indie", "timestamp": 200, "value": "{\"id\":\"c-indie\",\"name\":\"Indie\",\"added\":[220,4000],\"removed\":[]}", "version": "1"}],
+  ["user-collections.c-fps", {"key": "user-collections.c-fps", "timestamp": 201, "value": "{\"id\":\"c-fps\",\"name\":\"FPS\",\"added\":[10],\"removed\":[]}", "version": "1"}],
+  ["user-collections.dyn", {"key": "user-collections.dyn", "timestamp": 202, "value": "{\"id\":\"dyn\",\"name\":\"Dynamic\",\"added\":[],\"removed\":[],\"filterSpec\":{\"nFormatVersion\":1,\"strSearchText\":\"x\"}}", "version": "1"}]
+]

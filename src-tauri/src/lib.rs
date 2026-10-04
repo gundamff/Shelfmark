@@ -3,9 +3,9 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use steam_core::{
-    load_owned_games, run_preset, AutoCatPreset, AutoCatResult, AutoCatRule, BackupManager,
-    Collection, CollectionChangeset, CollectionStore, Game, GameMetadata, JsonCollectionStore,
-    MetadataIndex, Session, SteamPlatform,
+    load_live_library, load_owned_games, run_preset, AutoCatPreset, AutoCatResult, AutoCatRule,
+    BackupManager, Collection, CollectionChangeset, CollectionStore, Game, GameMetadata,
+    JsonCollectionStore, MetadataIndex, Session, SteamCloudCatalogStore, SteamPlatform,
 };
 #[cfg(windows)]
 use steam_core::WindowsSteamPlatform;
@@ -14,9 +14,16 @@ struct AppState {
     inner: Mutex<Option<SessionBundle>>,
 }
 
+#[derive(Clone, Copy)]
+enum StoreKind {
+    DemoJson,
+    SteamCloud,
+}
+
 struct SessionBundle {
     session: Session,
     store_path: PathBuf,
+    store_kind: StoreKind,
     meta: MetadataIndex,
     last_autocat: Option<AutoCatResult>,
 }
@@ -141,11 +148,71 @@ fn open_demo_session(state: tauri::State<'_, AppState>) -> Result<SessionSummary
     *state.inner.lock().map_err(|e| e.to_string())? = Some(SessionBundle {
         session,
         store_path,
+        store_kind: StoreKind::DemoJson,
         meta,
         last_autocat: None,
     });
 
     Ok(summary)
+}
+
+#[tauri::command]
+fn open_live_session(
+    user_id3: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<SessionSummary, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (user_id3, state);
+        return Err("live session is Windows-only in this MVP".into());
+    }
+
+    #[cfg(windows)]
+    {
+        let platform = WindowsSteamPlatform::new();
+        let root = platform.steam_root().map_err(map_err)?;
+        let store_path = root
+            .join("userdata")
+            .join(&user_id3)
+            .join("config")
+            .join("cloudstorage")
+            .join("cloud-storage-namespace-1.json");
+        if !store_path.is_file() {
+            return Err(format!(
+                "Steam catalog not found for user {user_id3}: {}",
+                store_path.display()
+            ));
+        }
+
+        let store = SteamCloudCatalogStore::new(store_path.clone());
+        let collections = store.load().map_err(map_err)?;
+        let collection_ids: Vec<_> = collections
+            .iter()
+            .flat_map(|c| c.app_ids.iter().copied())
+            .collect();
+        let games = load_live_library(&root, &user_id3, &collection_ids).map_err(map_err)?;
+
+        // Live AutoCat metadata is empty for now — Genre will skip until enrichment lands.
+        let meta = MetadataIndex::new();
+
+        let session = Session::new(games.clone(), collections.clone(), vec![store_path.clone()]);
+        let summary = SessionSummary {
+            mode: "live".into(),
+            game_count: games.len(),
+            collection_count: collections.len(),
+            store_path: store_path.display().to_string(),
+        };
+
+        *state.inner.lock().map_err(|e| e.to_string())? = Some(SessionBundle {
+            session,
+            store_path,
+            store_kind: StoreKind::SteamCloud,
+            meta,
+            last_autocat: None,
+        });
+
+        Ok(summary)
+    }
 }
 
 #[tauri::command]
@@ -225,12 +292,24 @@ fn export_session(state: tauri::State<'_, AppState>) -> Result<String, String> {
         let platform = WindowsSteamPlatform::new();
         let data = shelfmark_data_dir()?;
         let backups = BackupManager::new(data.join("backups"));
-        let store = JsonCollectionStore::new(bundle.store_path.clone());
-        bundle
-            .session
-            .export(&platform, &store, &backups)
-            .map_err(map_err)?;
-        bundle.session.collections = store.load().map_err(map_err)?;
+        match bundle.store_kind {
+            StoreKind::DemoJson => {
+                let store = JsonCollectionStore::new(bundle.store_path.clone());
+                bundle
+                    .session
+                    .export(&platform, &store, &backups)
+                    .map_err(map_err)?;
+                bundle.session.collections = store.load().map_err(map_err)?;
+            }
+            StoreKind::SteamCloud => {
+                let store = SteamCloudCatalogStore::new(bundle.store_path.clone());
+                bundle
+                    .session
+                    .export(&platform, &store, &backups)
+                    .map_err(map_err)?;
+                bundle.session.collections = store.load().map_err(map_err)?;
+            }
+        }
         Ok(format!("exported to {}", bundle.store_path.display()))
     }
 }
@@ -246,6 +325,7 @@ pub fn run() {
             detect_steam,
             is_steam_running,
             open_demo_session,
+            open_live_session,
             list_games,
             list_collections,
             pending_changeset,
