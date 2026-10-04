@@ -1,8 +1,8 @@
 # Shelfmark Core Collections Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** Build a testable Rust `steam-core` that can discover Steam on Windows, import a library snapshot, read/write modern Steam Collections via a fixture-backed backend, and export only after backup + ‚ÄúSteam not running‚Äù checks.
+**Goal:** Build a testable Rust `steam-core` that can discover Steam on Windows, import a library snapshot, read/write modern Steam Collections via a fixture-backed backend, and export only after backup + ‚ÄúSteam not running‚Ä?checks.
 
 **Architecture:** Thick `steam-core` crate (no Tauri). Domain types + `CollectionChangeset` + `SteamPlatform` trait with Windows impl. Collections I/O behind `CollectionStore` trait; MVP implements JSON cloud-storage namespace first (fixture-friendly), then LevelDB-compatible read/write matching upstream behavior. No UI in this plan.
 
@@ -84,7 +84,7 @@
 - Consumes: nothing
 - Produces: crate `steam-core` with `Error` / `Result<T>`
 
-- [ ] **Step 1: Create workspace and crate skeleton**
+- [x] **Step 1: Create workspace and crate skeleton**
 
 Root `Cargo.toml`:
 
@@ -152,16 +152,16 @@ pub fn crate_name() -> &'static str {
 }
 ```
 
-- [ ] **Step 2: Add MIT LICENSE and minimal README**
+- [x] **Step 2: Add MIT LICENSE and minimal README**
 
 README must state: Shelfmark, MIT, Windows-first, reference clone instructions pointing at `reference/README.md`, no GPL code copied.
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 Run: `cargo test -p steam-core`
 Expected: PASS (0 or trivial tests)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Cargo.toml LICENSE README.md crates/steam-core .gitignore reference/README.md
@@ -186,7 +186,7 @@ git commit -m "chore: bootstrap steam-core workspace"
   - `pub struct CollectionChangeset { pub create: Vec<Collection>, pub rename: Vec<(String /*id*/, String /*new_name*/)>, pub delete: Vec<String>, pub add_members: Vec<(String, Vec<AppId>)>, pub remove_members: Vec<(String, Vec<AppId>)> }`
   - `pub fn apply_changeset(collections: &mut Vec<Collection>, cs: &CollectionChangeset) -> Result<()>`
 
-- [ ] **Step 1: Write failing test for apply_changeset**
+- [x] **Step 1: Write failing test for apply_changeset**
 
 ```rust
 #[test]
@@ -211,12 +211,12 @@ fn adds_members_to_existing_collection() {
 }
 ```
 
-- [ ] **Step 2: Run test ‚Äî expect FAIL**
+- [x] **Step 2: Run test ‚Ä?expect FAIL**
 
 Run: `cargo test -p steam-core adds_members_to_existing_collection -- --nocapture`
 Expected: FAIL (module/type missing)
 
-- [ ] **Step 3: Implement types + apply_changeset**
+- [x] **Step 3: Implement types + apply_changeset**
 
 Rules for `apply_changeset`:
 - `create`: push if id absent; error if id exists
@@ -224,14 +224,14 @@ Rules for `apply_changeset`:
 - `delete`: remove by id (idempotent OK)
 - `add_members`: append unique app_ids
 - `remove_members`: retain those not listed
-- Order: delete ‚Üí create ‚Üí rename ‚Üí remove_members ‚Üí add_members
+- Order: delete ‚Ü?create ‚Ü?rename ‚Ü?remove_members ‚Ü?add_members
 
-- [ ] **Step 4: Run test ‚Äî expect PASS**
+- [x] **Step 4: Run test ‚Ä?expect PASS**
 
 Run: `cargo test -p steam-core`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/steam-core
@@ -254,9 +254,9 @@ git commit -m "feat(core): add collection domain types and changeset apply"
   - `pub struct WindowsSteamPlatform;`
   - `pub struct MockSteamPlatform { pub root: PathBuf, pub users: Vec<String>, pub running: bool }` for tests
 
-Reference (behavior only): registry / install path ideas in upstream `DlgSteamPath` / settings ‚Äî do not copy code. Typical Windows install: `C:\Program Files (x86)\Steam`; userdata: `{root}\userdata\{id3}\`.
+Reference (behavior only): registry / install path ideas in upstream `DlgSteamPath` / settings ‚Ä?do not copy code. Typical Windows install: `C:\Program Files (x86)\Steam`; userdata: `{root}\userdata\{id3}\`.
 
-- [ ] **Step 1: Failing test using MockSteamPlatform**
+- [x] **Step 1: Failing test using MockSteamPlatform**
 
 ```rust
 #[test]
@@ -266,17 +266,17 @@ fn mock_lists_users_from_userdata_dirs() {
 }
 ```
 
-Implement `list_user_ids3` as scanning `{steam_root}/userdata/*` numeric directory names ‚Äî testable without real Steam.
+Implement `list_user_ids3` as scanning `{steam_root}/userdata/*` numeric directory names ‚Ä?testable without real Steam.
 
-- [ ] **Step 2: Run ‚Äî FAIL then implement trait + mock + windows registry lookup**
+- [x] **Step 2: Run ‚Ä?FAIL then implement trait + mock + windows registry lookup**
 
 Windows `steam_root`: try registry `HKCU\Software\Valve\Steam\SteamPath` then `HKLM\SOFTWARE\WOW6432Node\Valve\Steam\InstallPath`, normalize to `PathBuf`.
 
 `is_steam_running`: check for process name `steam.exe` (sysinfo crate).
 
-- [ ] **Step 3: `cargo test -p steam-core` PASS**
+- [x] **Step 3: `cargo test -p steam-core` PASS**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "feat(core): add SteamPlatform trait and Windows detection"
@@ -302,7 +302,7 @@ MVP strategy (keep simple):
 
 Reference for future expansion only: `GameList.cs` licensecache / localconfig paths in `Constants.cs`.
 
-- [ ] **Step 1: Write fixture + failing test that loads 2 games**
+- [x] **Step 1: Write fixture + failing test that loads 2 games**
 
 ```json
 [
@@ -311,9 +311,9 @@ Reference for future expansion only: `GameList.cs` licensecache / localconfig pa
 ]
 ```
 
-- [ ] **Step 2: Implement loader; tests PASS**
+- [x] **Step 2: Implement loader; tests PASS**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "feat(core): load owned games from userdata fixture"
@@ -326,7 +326,7 @@ git commit -m "feat(core): load owned games from userdata fixture"
 **Files:**
 - Create: `collections/store.rs`, `collections/types.rs`, `collections/json_store.rs`, `fixtures/steam/userdata/123456/config/cloudstorage/cloud-storage-namespace-1.json`, `tests/collections_json_roundtrip.rs`
 - Modify: `collections/mod.rs`
-- Test: read ‚Üí mutate via changeset ‚Üí write ‚Üí read back
+- Test: read ‚Ü?mutate via changeset ‚Ü?write ‚Ü?read back
 
 **Interfaces:**
 - Consumes: `Collection`, `CollectionChangeset`, `apply_changeset`
@@ -334,16 +334,16 @@ git commit -m "feat(core): load owned games from userdata fixture"
   - `pub trait CollectionStore { fn load(&self) -> Result<Vec<Collection>>; fn save(&self, collections: &[Collection]) -> Result<()>; }`
   - `pub struct JsonCollectionStore { pub path: PathBuf }`
 
-**Format notes (from upstream behavior ‚Äî reimplement, do not copy):**
+**Format notes (from upstream behavior ‚Ä?reimplement, do not copy):**
 - File: `{steam}/userdata/{id3}/config/cloudstorage/cloud-storage-namespace-1.json`
 - Logical keys: `user-collections.<id>`, `user-collections.hidden`, `user-collections.favorite`
 - Value JSON includes at least `name`, `added` (array of app ids). Ignore dynamic `filterSpec` collections on import (skip), matching upstream intent in `GameList.ImportSteamLevelDB`.
 
 Fixture may be a simplified JSON array or object that `JsonCollectionStore` understands; if upstream file shape is a large wrapped structure, define a **clear Shelfmark-normalized on-disk schema for the JSON backend** documented in `collections/json_store.rs` module docs, and map to/from `Collection`. Goal of this task: stable roundtrip for static user collections.
 
-- [ ] **Step 1: Add synthetic fixture with two collections**
+- [x] **Step 1: Add synthetic fixture with two collections**
 
-- [ ] **Step 2: Failing roundtrip test**
+- [x] **Step 2: Failing roundtrip test**
 
 ```rust
 #[test]
@@ -353,9 +353,9 @@ fn json_store_roundtrip_after_changeset() {
 }
 ```
 
-- [ ] **Step 3: Implement `JsonCollectionStore` until PASS**
+- [x] **Step 3: Implement `JsonCollectionStore` until PASS**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "feat(core): JSON collection store with fixture roundtrip"
@@ -379,13 +379,13 @@ git commit -m "feat(core): JSON collection store with fixture roundtrip"
 
 **Safety:** Never write to the developer‚Äôs real LevelDB in unit tests. Use temp dirs + byte fixtures.
 
-- [ ] **Step 1: Byte-level fixture test for decode/encode of catalog payload**
+- [x] **Step 1: Byte-level fixture test for decode/encode of catalog payload**
 
-- [ ] **Step 2: Implement encode/decode helpers + store**
+- [x] **Step 2: Implement encode/decode helpers + store**
 
-- [ ] **Step 3: Tests PASS (ignored tests documented in module docs)**
+- [x] **Step 3: Tests PASS (ignored tests documented in module docs)**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "feat(core): LevelDB collection store with framed catalog codec"
@@ -408,20 +408,20 @@ git commit -m "feat(core): LevelDB collection store with framed catalog codec"
   - `impl Session { pub fn export(&mut self, platform: &dyn SteamPlatform, store: &dyn CollectionStore, backups: &BackupManager) -> Result<()>; }`
 
 Export algorithm (spec ¬ß5.4):
-1. If `platform.is_steam_running()?` ‚Üí `Err(Error::UserAction("close Steam before export".into()))`
-2. If pending empty ‚Üí `Err(Error::UserAction(...))` or no-op error
+1. If `platform.is_steam_running()?` ‚Ü?`Err(Error::UserAction("close Steam before export".into()))`
+2. If pending empty ‚Ü?`Err(Error::UserAction(...))` or no-op error
 3. Backup store‚Äôs underlying file(s)
 4. `apply_changeset` on in-memory collections
 5. `store.save`
 6. Clear pending on success
 
-- [ ] **Step 1: Write `export_refuses_when_steam_running` with MockSteamPlatform `{ running: true }`**
+- [x] **Step 1: Write `export_refuses_when_steam_running` with MockSteamPlatform `{ running: true }`**
 
-- [ ] **Step 2: FAIL ‚Üí implement Session/Backup ‚Üí PASS**
+- [x] **Step 2: FAIL ‚Ü?implement Session/Backup ‚Ü?PASS**
 
-- [ ] **Step 3: Write `export_writes_backup_then_store` with mock store recording calls**
+- [x] **Step 3: Write `export_writes_backup_then_store` with mock store recording calls**
 
-- [ ] **Step 4: PASS + commit**
+- [x] **Step 4: PASS + commit**
 
 ```bash
 git commit -m "feat(core): session export with backup and steam-running guard"
@@ -435,13 +435,13 @@ git commit -m "feat(core): session export with backup and steam-running guard"
 - Modify: `README.md` (how to run `cargo test -p steam-core`)
 - Test: full suite
 
-- [ ] **Step 1: Run** `cargo test -p steam-core` **‚Äî all non-ignored tests PASS**
+- [x] **Step 1: Run** `cargo test -p steam-core` **‚Ä?all non-ignored tests PASS**
 
-- [ ] **Step 2: Manual checklist (document in README)**
+- [x] **Step 2: Manual checklist (document in README)**
 
-1. (Optional on a Windows Steam machine) Point a small bin/example at real paths in read-only mode ‚Äî **read only** in this plan; live write is deferred until UI plan + explicit user confirmation.
+1. (Optional on a Windows Steam machine) Point a small bin/example at real paths in read-only mode ‚Ä?**read only** in this plan; live write is deferred until UI plan + explicit user confirmation.
 
-- [ ] **Step 3: Commit** docs updates if any
+- [x] **Step 3: Commit** docs updates if any
 
 ```bash
 git commit -m "docs: document steam-core test and safety gate"
@@ -453,17 +453,17 @@ git commit -m "docs: document steam-core test and safety gate"
 
 | Spec item | Task |
 |-----------|------|
-| Thick steam-core | 1‚Äì8 |
+| Thick steam-core | 1‚Ä? |
 | SteamPlatform / Windows-first | 3 |
 | Collections model + changeset | 2, 5, 6 |
 | Backup + Steam closed + export | 7 |
 | Library import | 4 |
-| Fixtures / no real Steam in CI | 4‚Äì7 |
+| Fixtures / no real Steam in CI | 4‚Ä? |
 | AutoCat | **Out of plan** (follow-up) |
 | Tauri/React | **Out of plan** (follow-up) |
 | MIT / no GPL copy | 1 + reference/README |
 
 ## Placeholder scan
 
-None intentional. LevelDB crate choice may be adjusted at Task 6 if the first crate fails to build on Windows ‚Äî swap only the dependency, keep the `CollectionStore` interface.
+None intentional. LevelDB crate choice may be adjusted at Task 6 if the first crate fails to build on Windows ‚Ä?swap only the dependency, keep the `CollectionStore` interface.
 ```
