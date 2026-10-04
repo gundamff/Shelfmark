@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   formatPendingSummary,
@@ -30,6 +30,11 @@ type AutoCatSummary = {
   addMemberOps: number;
 };
 
+type AppConfig = {
+  last_user_id3?: string | null;
+  steam_path_override?: string | null;
+};
+
 function App() {
   const [error, setError] = useState<string | null>(null);
   const [steam, setSteam] = useState<SteamInfo | null>(null);
@@ -41,6 +46,9 @@ function App() {
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selectedUser, setSelectedUser] = useState<string>("");
+  const [selectedGames, setSelectedGames] = useState<number[]>([]);
+  const [targetCollection, setTargetCollection] = useState<string>("");
+  const [newCollectionName, setNewCollectionName] = useState("");
 
   const run = useCallback(async (label: string, fn: () => Promise<void>) => {
     setBusy(true);
@@ -63,15 +71,38 @@ function App() {
     setGames(g);
     setCollections(c);
     setPending(p);
+    setTargetCollection((prev) => {
+      if (prev && c.some((x) => x.id === prev)) return prev;
+      return c[0]?.id ?? "";
+    });
   }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const cfg = await invoke<AppConfig>("get_config");
+        if (cfg.last_user_id3) {
+          setSelectedUser(cfg.last_user_id3);
+        }
+      } catch {
+        // ignore missing config
+      }
+    })();
+  }, []);
+
+  const toggleGame = (appId: number) => {
+    setSelectedGames((prev) =>
+      prev.includes(appId) ? prev.filter((id) => id !== appId) : [...prev, appId],
+    );
+  };
 
   return (
     <main className="app">
       <header className="hero">
         <h1>Shelfmark</h1>
         <p className="tagline">
-          Windows Steam library organizer — demo session writes AppData only, not
-          live Steam LevelDB yet.
+          Organize Steam collections. Demo writes AppData; live writes your Steam
+          cloud-storage catalog after you exit Steam.
         </p>
       </header>
 
@@ -86,9 +117,10 @@ function App() {
             run("detect_steam", async () => {
               const info = await invoke<SteamInfo>("detect_steam");
               setSteam(info);
-              if (info.users.length > 0) {
-                setSelectedUser((prev) => prev || info.users[0]);
-              }
+              setSelectedUser((prev) => {
+                if (prev && info.users.includes(prev)) return prev;
+                return info.users[0] ?? "";
+              });
             })
           }
         >
@@ -117,6 +149,7 @@ function App() {
                 setSession(s);
                 setAutocat(null);
                 setExportMsg(null);
+                setSelectedGames([]);
                 await refreshLists();
               })
             }
@@ -138,12 +171,14 @@ function App() {
             disabled={busy || !selectedUser}
             onClick={() =>
               run("open_live_session", async () => {
+                await invoke("save_last_user", { userId3: selectedUser });
                 const s = await invoke<SessionSummary>("open_live_session", {
                   userId3: selectedUser,
                 });
                 setSession(s);
                 setAutocat(null);
                 setExportMsg(null);
+                setSelectedGames([]);
                 await refreshLists();
               })
             }
@@ -157,7 +192,7 @@ function App() {
             <dd>{session.mode}</dd>
             <dt>Games / collections</dt>
             <dd>
-              {session.gameCount} / {session.collectionCount}
+              {games.length} / {collections.length}
             </dd>
             <dt>Store</dt>
             <dd className="path">{session.storePath}</dd>
@@ -167,13 +202,99 @@ function App() {
 
       {session && (
         <>
+          <section className="panel">
+            <h2>Manual edit</h2>
+            <div className="row">
+              <input
+                value={newCollectionName}
+                placeholder="New collection name"
+                onChange={(e) => setNewCollectionName(e.target.value)}
+              />
+              <button
+                disabled={busy || !newCollectionName.trim()}
+                onClick={() =>
+                  run("create_collection", async () => {
+                    setPending(
+                      await invoke<CollectionChangeset>("create_collection", {
+                        name: newCollectionName.trim(),
+                      }),
+                    );
+                    setNewCollectionName("");
+                    await refreshLists();
+                  })
+                }
+              >
+                Create collection
+              </button>
+            </div>
+            <div className="row" style={{ marginTop: "0.75rem" }}>
+              <select
+                value={targetCollection}
+                onChange={(e) => setTargetCollection(e.target.value)}
+                disabled={!collections.length}
+              >
+                {collections.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.app_ids.length})
+                  </option>
+                ))}
+              </select>
+              <button
+                disabled={busy || !targetCollection || selectedGames.length === 0}
+                onClick={() =>
+                  run("add_games_to_collection", async () => {
+                    setPending(
+                      await invoke<CollectionChangeset>("add_games_to_collection", {
+                        collectionId: targetCollection,
+                        appIds: selectedGames,
+                      }),
+                    );
+                    await refreshLists();
+                  })
+                }
+              >
+                Add selected
+              </button>
+              <button
+                disabled={busy || !targetCollection || selectedGames.length === 0}
+                onClick={() =>
+                  run("remove_games_from_collection", async () => {
+                    setPending(
+                      await invoke<CollectionChangeset>(
+                        "remove_games_from_collection",
+                        {
+                          collectionId: targetCollection,
+                          appIds: selectedGames,
+                        },
+                      ),
+                    );
+                    await refreshLists();
+                  })
+                }
+              >
+                Remove selected
+              </button>
+            </div>
+            <p className="muted">
+              Selected {selectedGames.length} game(s). Edits go to pending until
+              export.
+            </p>
+          </section>
+
           <section className="panel split">
             <div>
               <h2>Games</h2>
-              <ul>
+              <ul className="checklist">
                 {games.map((g) => (
                   <li key={g.app_id}>
-                    {g.name} <span className="muted">({g.app_id})</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={selectedGames.includes(g.app_id)}
+                        onChange={() => toggleGame(g.app_id)}
+                      />{" "}
+                      {g.name} <span className="muted">({g.app_id})</span>
+                    </label>
                   </li>
                 ))}
               </ul>
@@ -183,7 +304,13 @@ function App() {
               <ul>
                 {collections.map((c) => (
                   <li key={c.id}>
-                    {c.name}{" "}
+                    <button
+                      className="linkish"
+                      disabled={busy}
+                      onClick={() => setTargetCollection(c.id)}
+                    >
+                      {c.name}
+                    </button>{" "}
                     <span className="muted">{c.app_ids.length} apps</span>
                   </li>
                 ))}
@@ -208,7 +335,10 @@ function App() {
                 disabled={busy || !autocat}
                 onClick={() =>
                   run("queue_last_autocat", async () => {
-                    setPending(await invoke<CollectionChangeset>("queue_last_autocat"));
+                    setPending(
+                      await invoke<CollectionChangeset>("queue_last_autocat"),
+                    );
+                    await refreshLists();
                   })
                 }
               >
@@ -240,6 +370,7 @@ function App() {
                   const msg = await invoke<string>("export_session");
                   setExportMsg(msg);
                   setAutocat(null);
+                  setSelectedGames([]);
                   await refreshLists();
                 })
               }

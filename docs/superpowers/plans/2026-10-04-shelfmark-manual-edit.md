@@ -8,7 +8,7 @@
 
 ## Tasks
 
-- [ ] Task 1: `steam-core` config load/save (`last_user_id3`, optional steam path override)
-- [ ] Task 2: Commands: `create_collection`, `add_games_to_collection`, `remove_games_from_collection`, `get_config`/`save_config`
-- [ ] Task 3: React UI for selection + edits; remember user
-- [ ] Task 4: tests + merge
+- [x] Task 1: `steam-core` config load/save (`last_user_id3`, optional steam path override)
+- [x] Task 2: Commands: `create_collection`, `add_games_to_collection`, `remove_games_from_collection`, `get_config`/`save_config`
+- [x] Task 3: React UI for selection + edits; remember user
+- [x] Task 4: tests + merge

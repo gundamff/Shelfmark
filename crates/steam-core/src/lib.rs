@@ -1,6 +1,7 @@
 pub mod autocat;
 pub mod backup;
 pub mod collections;
+pub mod config;
 pub mod error;
 pub mod library;
 pub mod platform;
@@ -16,6 +17,7 @@ pub use collections::{
     apply_changeset, CollectionStore, JsonCollectionStore, LevelDbCollectionStore,
     SteamCloudCatalogStore,
 };
+pub use config::AppConfig;
 pub use error::{Error, Result};
 pub use library::{load_live_library, load_owned_games};
 pub use platform::{MockSteamPlatform, SteamPlatform};

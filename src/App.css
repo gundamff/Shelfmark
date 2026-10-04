@@ -72,6 +72,37 @@ select {
   min-width: 10rem;
 }
 
+input[type="text"],
+input:not([type]),
+input[type="search"] {
+  border: 1px solid #6f9b7c;
+  background: #152018;
+  color: #f2f5f1;
+  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  font: inherit;
+  min-width: 14rem;
+}
+
+.checklist {
+  list-style: none;
+  padding-left: 0;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.checklist li {
+  margin: 0.2rem 0;
+}
+
+button.linkish {
+  background: transparent;
+  border: none;
+  color: #9fd0b0;
+  padding: 0;
+  text-decoration: underline;
+}
+
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;

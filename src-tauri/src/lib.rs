@@ -3,9 +3,10 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use steam_core::{
-    load_live_library, load_owned_games, run_preset, AutoCatPreset, AutoCatResult, AutoCatRule,
-    BackupManager, Collection, CollectionChangeset, CollectionStore, Game, GameMetadata,
-    JsonCollectionStore, MetadataIndex, Session, SteamCloudCatalogStore, SteamPlatform,
+    load_live_library, load_owned_games, run_preset, AppConfig, AutoCatPreset, AutoCatResult,
+    AutoCatRule, BackupManager, Collection, CollectionChangeset, CollectionStore, Game,
+    GameMetadata, JsonCollectionStore, MetadataIndex, Session, SteamCloudCatalogStore,
+    SteamPlatform,
 };
 #[cfg(windows)]
 use steam_core::WindowsSteamPlatform;
@@ -226,7 +227,60 @@ fn list_games(state: tauri::State<'_, AppState>) -> Result<Vec<Game>, String> {
 fn list_collections(state: tauri::State<'_, AppState>) -> Result<Vec<Collection>, String> {
     let guard = state.inner.lock().map_err(|e| e.to_string())?;
     let bundle = guard.as_ref().ok_or_else(|| "no session open".to_string())?;
-    Ok(bundle.session.collections.clone())
+    bundle.session.effective_collections().map_err(map_err)
+}
+
+#[tauri::command]
+fn get_config() -> Result<AppConfig, String> {
+    AppConfig::load().map_err(map_err)
+}
+
+#[tauri::command]
+fn save_last_user(user_id3: String) -> Result<(), String> {
+    let mut cfg = AppConfig::load().map_err(map_err)?;
+    cfg.last_user_id3 = Some(user_id3);
+    cfg.save().map_err(map_err)
+}
+
+#[tauri::command]
+fn create_collection(
+    name: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<CollectionChangeset, String> {
+    let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
+    let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
+    bundle.session.create_collection(name).map_err(map_err)?;
+    Ok(bundle.session.pending.clone())
+}
+
+#[tauri::command]
+fn add_games_to_collection(
+    collection_id: String,
+    app_ids: Vec<u32>,
+    state: tauri::State<'_, AppState>,
+) -> Result<CollectionChangeset, String> {
+    let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
+    let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
+    bundle
+        .session
+        .add_games_to_collection(&collection_id, &app_ids)
+        .map_err(map_err)?;
+    Ok(bundle.session.pending.clone())
+}
+
+#[tauri::command]
+fn remove_games_from_collection(
+    collection_id: String,
+    app_ids: Vec<u32>,
+    state: tauri::State<'_, AppState>,
+) -> Result<CollectionChangeset, String> {
+    let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
+    let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
+    bundle
+        .session
+        .remove_games_from_collection(&collection_id, &app_ids)
+        .map_err(map_err)?;
+    Ok(bundle.session.pending.clone())
 }
 
 #[tauri::command]
@@ -329,6 +383,11 @@ pub fn run() {
             list_games,
             list_collections,
             pending_changeset,
+            get_config,
+            save_last_user,
+            create_collection,
+            add_games_to_collection,
+            remove_games_from_collection,
             run_autocat_genre,
             queue_last_autocat,
             export_session
