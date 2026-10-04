@@ -377,6 +377,7 @@ function App() {
         locale={locale}
         metaCoverage={metaCoverage}
         gameCount={games.length}
+        selectedUser={selectedUser}
         onClose={() => setWizardOpen(false)}
         onQueued={() => {
           void refreshLists();

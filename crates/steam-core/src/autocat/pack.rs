@@ -3,16 +3,11 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::autocat::rules::{AutoCatPreset, AutoCatRule, UserScoreBand, YearMode};
+use crate::autocat::policy::ConflictPolicy;
+use crate::autocat::rules::{
+    AchievementMode, AutoCatPreset, AutoCatRule, UserScoreBand, YearMode,
+};
 use crate::{Error, Result};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ConflictPolicy {
-    Skip,
-    Merge,
-    Replace,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct I18nStr {
@@ -61,6 +56,15 @@ pub enum PackRule {
     UserScore {
         bands: Vec<UserScoreBand>,
     },
+    Achievements {
+        #[serde(default = "default_prefix_a")]
+        prefix: String,
+        mode: AchievementMode,
+    },
+}
+
+fn default_prefix_a() -> String {
+    "ach_".into()
 }
 
 fn default_prefix_g() -> String {
@@ -166,6 +170,10 @@ fn pack_rule_to_autocat(r: &PackRule) -> Result<AutoCatRule> {
         PackRule::UserScore { bands } => AutoCatRule::UserScore {
             bands: bands.clone(),
         },
+        PackRule::Achievements { prefix, mode } => AutoCatRule::Achievements {
+            prefix: prefix.clone(),
+            mode: *mode,
+        },
     })
 }
 
@@ -257,5 +265,18 @@ mod tests {
     fn rejects_empty_rules() {
         let raw = r#"{"id":"x","name":{"en":"x","zh":"x"},"rules":[]}"#;
         assert!(parse_rule_pack_json(raw).is_err());
+    }
+
+    #[test]
+    fn parses_achievement_pack() {
+        let raw = r#"{
+          "id": "achievements-100",
+          "name": {"en": "100%", "zh": "100%"},
+          "needs_achievements": true,
+          "rules": [{"kind": "achievements", "prefix": "ach_", "mode": "all_unlocked"}]
+        }"#;
+        let p = parse_rule_pack_json(raw).unwrap();
+        assert!(p.needs_achievements);
+        assert_eq!(p.to_preset().unwrap().rules.len(), 1);
     }
 }

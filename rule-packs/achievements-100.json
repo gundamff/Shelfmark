@@ -1,0 +1,13 @@
+{
+  "id": "achievements-100",
+  "name": { "en": "Achievements 100%", "zh": "成就 100%" },
+  "description": {
+    "en": "Games with all achievements unlocked (needs Web API fetch).",
+    "zh": "已解锁全部成就的游戏（需先拉取 Web API 成就）。"
+  },
+  "recommended": false,
+  "needs_metadata": false,
+  "needs_achievements": true,
+  "default_conflict": "merge",
+  "rules": [{ "kind": "achievements", "prefix": "ach_", "mode": "all_unlocked" }]
+}

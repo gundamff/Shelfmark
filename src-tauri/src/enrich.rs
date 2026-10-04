@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use steam_core::{AppId, GameMetadata, MetadataIndex};
+use std::path::Path;
+
+use steam_core::{load_metadata_from_appinfo, AppId, GameMetadata, MetadataIndex};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MetaCache {
@@ -150,14 +152,16 @@ pub fn enrich_metadata_index(
     meta: &mut MetadataIndex,
     app_ids: &[AppId],
     max_fetch: usize,
+    steam_root: Option<&Path>,
 ) -> Result<EnrichReport, String> {
-    enrich_metadata_index_with_progress(meta, app_ids, max_fetch, None, None)
+    enrich_metadata_index_with_progress(meta, app_ids, max_fetch, steam_root, None, None)
 }
 
 pub fn enrich_metadata_index_with_progress(
     meta: &mut MetadataIndex,
     app_ids: &[AppId],
     max_fetch: usize,
+    steam_root: Option<&Path>,
     mut on_progress: Option<&mut dyn FnMut(&EnrichStatus)>,
     should_stop: Option<&dyn Fn() -> bool>,
 ) -> Result<EnrichReport, String> {
@@ -174,6 +178,10 @@ pub fn enrich_metadata_index_with_progress(
         remaining: total,
         stopped: false,
     };
+
+    let local_map = steam_root
+        .map(|root| load_metadata_from_appinfo(root, app_ids))
+        .unwrap_or_default();
 
     for &app_id in app_ids {
         if should_stop.is_some_and(|f| f()) {
@@ -205,6 +213,20 @@ pub fn enrich_metadata_index_with_progress(
                 cb(&status);
             }
             continue;
+        }
+        if let Some(local) = local_map.get(&app_id) {
+            if !local.genres.is_empty() || local.release_year.is_some() {
+                cache.apps.insert(app_id, local.clone());
+                meta.insert(app_id, local.clone());
+                report.from_cache += 1;
+                status.from_local += 1;
+                status.done += 1;
+                status.remaining = total.saturating_sub(status.done);
+                if let Some(cb) = on_progress.as_mut() {
+                    cb(&status);
+                }
+                continue;
+            }
         }
         if report.fetched >= max_fetch as u32 {
             report.skipped_budget += 1;

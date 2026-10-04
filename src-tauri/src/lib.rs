@@ -9,10 +9,11 @@ use std::thread;
 use serde::Serialize;
 use tauri::Manager;
 use steam_core::{
-    default_user_rule_packs_dir, load_live_library, load_owned_games, load_rule_packs, run_preset,
-    AppConfig, AutoCatPreset, AutoCatResult, AutoCatRule, BackupManager, Collection,
-    CollectionChangeset, CollectionStore, Game, GameMetadata, JsonCollectionStore, MetadataIndex,
-    RulePack, Session, SteamCloudCatalogStore, SteamCompatInfo, SteamPlatform,
+    default_user_rule_packs_dir, load_live_library, load_owned_games, load_rule_packs,
+    run_preset, run_preset_with_options, AchievementIndex, AppConfig, AutoCatPreset,
+    AutoCatResult, AutoCatRule, BackupManager, Collection, CollectionChangeset, CollectionStore,
+    ConflictPolicy, Game, GameMetadata, JsonCollectionStore, MetadataIndex, RulePack, Session,
+    SteamCloudCatalogStore, SteamCompatInfo, SteamPlatform,
 };
 #[cfg(windows)]
 use steam_core::WindowsSteamPlatform;
@@ -38,7 +39,9 @@ struct SessionBundle {
     session: Session,
     store_path: PathBuf,
     store_kind: StoreKind,
+    steam_root: Option<PathBuf>,
     meta: MetadataIndex,
+    achievements: AchievementIndex,
     last_autocat: Option<AutoCatResult>,
 }
 
@@ -98,9 +101,19 @@ fn list_rule_packs() -> Result<Vec<RulePack>, String> {
     load_rule_packs(&builtin_rule_packs_dir(), &user).map_err(map_err)
 }
 
+fn parse_conflict(raw: Option<String>, fallback: ConflictPolicy) -> ConflictPolicy {
+    match raw.as_deref() {
+        Some("skip") => ConflictPolicy::Skip,
+        Some("replace") => ConflictPolicy::Replace,
+        Some("merge") => ConflictPolicy::Merge,
+        _ => fallback,
+    }
+}
+
 #[tauri::command]
 fn preview_rule_pack(
     pack_id: String,
+    conflict: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<AutoCatSummary, String> {
     let packs = list_rule_packs()?;
@@ -108,14 +121,17 @@ fn preview_rule_pack(
         .into_iter()
         .find(|p| p.id == pack_id)
         .ok_or_else(|| format!("unknown rule pack: {pack_id}"))?;
+    let policy = parse_conflict(conflict, pack.default_conflict);
     let preset = pack.to_preset().map_err(map_err)?;
     let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
     let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
-    let result = run_preset(
+    let result = run_preset_with_options(
         &bundle.session.games,
         &bundle.meta,
+        &bundle.achievements,
         &bundle.session.collections,
         &preset,
+        policy,
     )
     .map_err(map_err)?;
     let summary = AutoCatSummary {
@@ -231,7 +247,9 @@ fn open_demo_session(state: tauri::State<'_, AppState>) -> Result<SessionSummary
         session,
         store_path,
         store_kind: StoreKind::DemoJson,
+        steam_root: Some(fixture),
         meta,
+        achievements: AchievementIndex::new(),
         last_autocat: None,
     });
 
@@ -274,11 +292,15 @@ fn open_live_session(
             .collect();
         let games = load_live_library(&root, &user_id3, &collection_ids).map_err(map_err)?;
 
-        // Seed from disk cache; call enrich_metadata for store fills.
+        // Seed from disk cache + local appinfo; Store fill via enrich.
         let cache = MetaCache::load();
+        let ids: Vec<_> = games.iter().map(|g| g.app_id).collect();
+        let local = steam_core::load_metadata_from_appinfo(&root, &ids);
         let mut meta = MetadataIndex::new();
         for g in &games {
             if let Some(m) = cache.apps.get(&g.app_id) {
+                meta.insert(g.app_id, m.clone());
+            } else if let Some(m) = local.get(&g.app_id) {
                 meta.insert(g.app_id, m.clone());
             }
         }
@@ -295,7 +317,9 @@ fn open_live_session(
             session,
             store_path,
             store_kind: StoreKind::SteamCloud,
+            steam_root: Some(root),
             meta,
+            achievements: AchievementIndex::new(),
             last_autocat: None,
         });
 
@@ -437,7 +461,13 @@ fn enrich_metadata(
     let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
     let ids: Vec<_> = bundle.session.games.iter().map(|g| g.app_id).collect();
     let budget = max_fetch.unwrap_or(40) as usize;
-    enrich_metadata_index(&mut bundle.meta, &ids, budget)
+    let root = bundle.steam_root.clone();
+    enrich_metadata_index(
+        &mut bundle.meta,
+        &ids,
+        budget,
+        root.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -466,15 +496,18 @@ fn enrich_start(
     state.enrich_stop.store(false, Ordering::SeqCst);
 
     let budget = max_fetch.unwrap_or(40) as usize;
-    let ids = {
+    let (ids, steam_root) = {
         let guard = state.inner.lock().map_err(|e| e.to_string())?;
         let bundle = guard.as_ref().ok_or_else(|| "no session open".to_string())?;
-        bundle
-            .session
-            .games
-            .iter()
-            .map(|g| g.app_id)
-            .collect::<Vec<_>>()
+        (
+            bundle
+                .session
+                .games
+                .iter()
+                .map(|g| g.app_id)
+                .collect::<Vec<_>>(),
+            bundle.steam_root.clone(),
+        )
     };
 
     {
@@ -508,6 +541,7 @@ fn enrich_start(
             &mut bundle.meta,
             &ids,
             budget,
+            steam_root.as_deref(),
             Some(&mut on_progress),
             Some(&|| state.enrich_stop.load(Ordering::SeqCst)),
         );
@@ -527,6 +561,56 @@ fn probe_achievement_ratio(
         .filter(|k| !k.is_empty())
         .ok_or_else(|| "Steam Web API key not configured".to_string())?;
     achievements_api::fetch_achievement_ratio(&key, &user_id3, app_id)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AchievementFetchReport {
+    fetched: u32,
+    failed: u32,
+    cached: u32,
+}
+
+#[tauri::command]
+fn fetch_session_achievements(
+    user_id3: String,
+    max_apps: Option<u32>,
+    state: tauri::State<'_, AppState>,
+) -> Result<AchievementFetchReport, String> {
+    let cfg = AppConfig::load().map_err(map_err)?;
+    let key = cfg
+        .steam_web_api_key
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| "Steam Web API key not configured".to_string())?;
+    let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
+    let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
+    let budget = max_apps.unwrap_or(40) as usize;
+    let mut report = AchievementFetchReport {
+        fetched: 0,
+        failed: 0,
+        cached: 0,
+    };
+    let ids: Vec<u32> = bundle.session.games.iter().map(|g| g.app_id).collect();
+    for app_id in ids.into_iter().take(budget) {
+        if bundle.achievements.contains_key(&app_id) {
+            report.cached += 1;
+            continue;
+        }
+        match achievements_api::fetch_achievement_ratio(&key, &user_id3, app_id) {
+            Ok(Some(ratio)) => {
+                bundle.achievements.insert(app_id, ratio);
+                report.fetched += 1;
+            }
+            Ok(None) => {
+                report.failed += 1;
+            }
+            Err(_) => {
+                report.failed += 1;
+            }
+        }
+        thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Ok(report)
 }
 
 #[tauri::command]
@@ -625,6 +709,7 @@ pub fn run() {
             enrich_status,
             enrich_stop,
             probe_achievement_ratio,
+            fetch_session_achievements,
             metadata_coverage,
             export_session
         ])

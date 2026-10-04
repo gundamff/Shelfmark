@@ -1,0 +1,13 @@
+{
+  "id": "achievements-partial",
+  "name": { "en": "Achievements in progress", "zh": "成就进行中" },
+  "description": {
+    "en": "Games with partial achievement progress (needs Web API fetch).",
+    "zh": "有部分成就进度的游戏（需先拉取 Web API 成就）。"
+  },
+  "recommended": false,
+  "needs_metadata": false,
+  "needs_achievements": true,
+  "default_conflict": "merge",
+  "rules": [{ "kind": "achievements", "prefix": "ach_", "mode": "partial" }]
+}

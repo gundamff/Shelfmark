@@ -1,9 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::autocat::meta::MetadataIndex;
-use crate::autocat::rules::{AutoCatPreset, AutoCatRule, YearMode};
+use crate::autocat::policy::ConflictPolicy;
+use crate::autocat::rules::{AchievementMode, AutoCatPreset, AutoCatRule, YearMode};
 use crate::types::{AppId, Collection, CollectionChangeset, Game};
 use crate::Result;
+
+/// app_id -> unlock ratio in \[0.0, 1.0\].
+pub type AchievementIndex = HashMap<AppId, f32>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoCatResult {
@@ -12,12 +16,31 @@ pub struct AutoCatResult {
     pub skipped_missing_meta: u32,
 }
 
-/// Dry-run AutoCat: produce a changeset without writing Steam files.
+/// Dry-run AutoCat with merge conflict policy and empty achievements.
 pub fn run_preset(
     games: &[Game],
     meta: &MetadataIndex,
     existing: &[Collection],
     preset: &AutoCatPreset,
+) -> Result<AutoCatResult> {
+    run_preset_with_options(
+        games,
+        meta,
+        &AchievementIndex::new(),
+        existing,
+        preset,
+        ConflictPolicy::Merge,
+    )
+}
+
+/// Dry-run AutoCat with conflict policy and achievement ratios.
+pub fn run_preset_with_options(
+    games: &[Game],
+    meta: &MetadataIndex,
+    achievements: &AchievementIndex,
+    existing: &[Collection],
+    preset: &AutoCatPreset,
+    conflict: ConflictPolicy,
 ) -> Result<AutoCatResult> {
     let mut matched_games = 0u32;
     let mut skipped_missing_meta = 0u32;
@@ -25,6 +48,8 @@ pub fn run_preset(
     // Working membership: id -> (name, members)
     let mut by_id: HashMap<String, (String, HashSet<AppId>)> = HashMap::new();
     let mut name_to_id: HashMap<String, String> = HashMap::new();
+    let preexisting_ids: HashSet<String> = existing.iter().map(|c| c.id.clone()).collect();
+    let mut cleared: HashSet<String> = HashSet::new();
 
     for c in existing {
         let members: HashSet<AppId> = c.app_ids.iter().copied().collect();
@@ -98,8 +123,16 @@ pub fn run_preset(
                             &mut name_to_id,
                             &mut created_ids,
                         );
-                        by_id.get_mut(&id).unwrap().1.insert(game.app_id);
-                        any = true;
+                        if place_member(
+                            &id,
+                            game.app_id,
+                            &mut by_id,
+                            &preexisting_ids,
+                            &mut cleared,
+                            conflict,
+                        ) {
+                            any = true;
+                        }
                     }
                     if any {
                         matched_games += 1;
@@ -142,8 +175,16 @@ pub fn run_preset(
                             &mut name_to_id,
                             &mut created_ids,
                         );
-                        by_id.get_mut(&id).unwrap().1.insert(game.app_id);
-                        any = true;
+                        if place_member(
+                            &id,
+                            game.app_id,
+                            &mut by_id,
+                            &preexisting_ids,
+                            &mut cleared,
+                            conflict,
+                        ) {
+                            any = true;
+                        }
                     }
                     if any {
                         matched_games += 1;
@@ -167,8 +208,16 @@ pub fn run_preset(
                     let col_name = format!("{prefix}{label}");
                     let id =
                         ensure_collection(&col_name, &mut by_id, &mut name_to_id, &mut created_ids);
-                    by_id.get_mut(&id).unwrap().1.insert(game.app_id);
-                    matched_games += 1;
+                    if place_member(
+                        &id,
+                        game.app_id,
+                        &mut by_id,
+                        &preexisting_ids,
+                        &mut cleared,
+                        conflict,
+                    ) {
+                        matched_games += 1;
+                    }
                 }
             }
             AutoCatRule::Flags { prefix, included } => {
@@ -195,8 +244,16 @@ pub fn run_preset(
                             &mut name_to_id,
                             &mut created_ids,
                         );
-                        by_id.get_mut(&id).unwrap().1.insert(game.app_id);
-                        any = true;
+                        if place_member(
+                            &id,
+                            game.app_id,
+                            &mut by_id,
+                            &preexisting_ids,
+                            &mut cleared,
+                            conflict,
+                        ) {
+                            any = true;
+                        }
                     }
                     if any {
                         matched_games += 1;
@@ -234,7 +291,14 @@ pub fn run_preset(
                             &mut name_to_id,
                             &mut created_ids,
                         );
-                        by_id.get_mut(&id).unwrap().1.insert(game.app_id);
+                        let _ = place_member(
+                            &id,
+                            game.app_id,
+                            &mut by_id,
+                            &preexisting_ids,
+                            &mut cleared,
+                            conflict,
+                        );
                     }
                     matched_games += 1;
                 }
@@ -261,8 +325,54 @@ pub fn run_preset(
                         &mut name_to_id,
                         &mut created_ids,
                     );
-                    by_id.get_mut(&id).unwrap().1.insert(game.app_id);
-                    matched_games += 1;
+                    if place_member(
+                        &id,
+                        game.app_id,
+                        &mut by_id,
+                        &preexisting_ids,
+                        &mut cleared,
+                        conflict,
+                    ) {
+                        matched_games += 1;
+                    }
+                }
+            }
+            AutoCatRule::Achievements { prefix, mode } => {
+                let label = match mode {
+                    AchievementMode::AllUnlocked => "100%",
+                    AchievementMode::NoneUnlocked => "0%",
+                    AchievementMode::Partial => "partial",
+                };
+                let col_name = format!("{prefix}{label}");
+                for game in games {
+                    let Some(&ratio) = achievements.get(&game.app_id) else {
+                        skipped_missing_meta += 1;
+                        continue;
+                    };
+                    let matches = match mode {
+                        AchievementMode::AllUnlocked => ratio >= 1.0,
+                        AchievementMode::NoneUnlocked => ratio <= 0.0,
+                        AchievementMode::Partial => ratio > 0.0 && ratio < 1.0,
+                    };
+                    if !matches {
+                        continue;
+                    }
+                    let id = ensure_collection(
+                        &col_name,
+                        &mut by_id,
+                        &mut name_to_id,
+                        &mut created_ids,
+                    );
+                    if place_member(
+                        &id,
+                        game.app_id,
+                        &mut by_id,
+                        &preexisting_ids,
+                        &mut cleared,
+                        conflict,
+                    ) {
+                        matched_games += 1;
+                    }
                 }
             }
             AutoCatRule::Manual {
@@ -278,9 +388,15 @@ pub fn run_preset(
                 for name in add {
                     let id =
                         ensure_collection(name, &mut by_id, &mut name_to_id, &mut created_ids);
-                    let set = &mut by_id.get_mut(&id).unwrap().1;
                     for app in &targets {
-                        set.insert(*app);
+                        let _ = place_member(
+                            &id,
+                            *app,
+                            &mut by_id,
+                            &preexisting_ids,
+                            &mut cleared,
+                            conflict,
+                        );
                     }
                 }
                 for name in remove {
@@ -366,6 +482,40 @@ fn slug(name: &str) -> String {
         .collect()
 }
 
+fn place_member(
+    id: &str,
+    app_id: AppId,
+    by_id: &mut HashMap<String, (String, HashSet<AppId>)>,
+    preexisting_ids: &HashSet<String>,
+    cleared: &mut HashSet<String>,
+    conflict: ConflictPolicy,
+) -> bool {
+    match conflict {
+        ConflictPolicy::Skip if preexisting_ids.contains(id) => false,
+        ConflictPolicy::Replace if preexisting_ids.contains(id) => {
+            if cleared.insert(id.to_string()) {
+                if let Some((_, set)) = by_id.get_mut(id) {
+                    set.clear();
+                }
+            }
+            if let Some((_, set)) = by_id.get_mut(id) {
+                set.insert(app_id);
+                true
+            } else {
+                false
+            }
+        }
+        _ => {
+            if let Some((_, set)) = by_id.get_mut(id) {
+                set.insert(app_id);
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -420,6 +570,141 @@ mod tests {
             .unwrap();
         assert!(action.app_ids.contains(&10));
         assert!(action.app_ids.contains(&220));
+    }
+
+    #[test]
+    fn conflict_skip_leaves_existing_collection() {
+        use crate::autocat::policy::ConflictPolicy;
+        use crate::types::Collection;
+
+        let games = vec![game(10, "CS"), game(220, "HL2")];
+        let mut meta = HashMap::new();
+        meta.insert(
+            10,
+            GameMetadata {
+                genres: vec!["Action".into()],
+                ..Default::default()
+            },
+        );
+        meta.insert(
+            220,
+            GameMetadata {
+                genres: vec!["Action".into()],
+                ..Default::default()
+            },
+        );
+        let existing = vec![Collection {
+            id: "c1".into(),
+            name: "g_Action".into(),
+            app_ids: vec![10],
+        }];
+        let preset = AutoCatPreset {
+            name: "g".into(),
+            rules: vec![AutoCatRule::Genre {
+                prefix: "g_".into(),
+                max_categories: 0,
+                remove_existing: false,
+            }],
+        };
+        let result = run_preset_with_options(
+            &games,
+            &meta,
+            &AchievementIndex::new(),
+            &existing,
+            &preset,
+            ConflictPolicy::Skip,
+        )
+        .unwrap();
+        assert!(result.changeset.add_members.is_empty());
+        assert!(result.changeset.remove_members.is_empty());
+    }
+
+    #[test]
+    fn conflict_replace_clears_then_fills() {
+        use crate::autocat::policy::ConflictPolicy;
+        use crate::types::Collection;
+
+        let games = vec![game(220, "HL2")];
+        let mut meta = HashMap::new();
+        meta.insert(
+            220,
+            GameMetadata {
+                genres: vec!["Action".into()],
+                ..Default::default()
+            },
+        );
+        let existing = vec![Collection {
+            id: "c1".into(),
+            name: "g_Action".into(),
+            app_ids: vec![10, 99],
+        }];
+        let preset = AutoCatPreset {
+            name: "g".into(),
+            rules: vec![AutoCatRule::Genre {
+                prefix: "g_".into(),
+                max_categories: 0,
+                remove_existing: false,
+            }],
+        };
+        let result = run_preset_with_options(
+            &games,
+            &meta,
+            &AchievementIndex::new(),
+            &existing,
+            &preset,
+            ConflictPolicy::Replace,
+        )
+        .unwrap();
+        let removes = result
+            .changeset
+            .remove_members
+            .iter()
+            .find(|(id, _)| id == "c1")
+            .map(|(_, apps)| apps.clone())
+            .unwrap_or_default();
+        assert!(removes.contains(&10) && removes.contains(&99));
+        let adds = result
+            .changeset
+            .add_members
+            .iter()
+            .find(|(id, _)| id == "c1")
+            .map(|(_, apps)| apps.clone())
+            .unwrap_or_default();
+        assert_eq!(adds, vec![220]);
+    }
+
+    #[test]
+    fn achievements_all_unlocked() {
+        use crate::autocat::policy::ConflictPolicy;
+        use crate::autocat::rules::AchievementMode;
+
+        let games = vec![game(1, "A"), game(2, "B")];
+        let meta = HashMap::new();
+        let mut ach = AchievementIndex::new();
+        ach.insert(1, 1.0);
+        ach.insert(2, 0.5);
+        let preset = AutoCatPreset {
+            name: "a".into(),
+            rules: vec![AutoCatRule::Achievements {
+                prefix: "ach_".into(),
+                mode: AchievementMode::AllUnlocked,
+            }],
+        };
+        let result = run_preset_with_options(
+            &games,
+            &meta,
+            &ach,
+            &[],
+            &preset,
+            ConflictPolicy::Merge,
+        )
+        .unwrap();
+        assert_eq!(result.matched_games, 1);
+        assert!(result
+            .changeset
+            .create
+            .iter()
+            .any(|c| c.name == "ach_100%" && c.app_ids == vec![1]));
     }
 
     #[test]

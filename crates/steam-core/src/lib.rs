@@ -12,8 +12,8 @@ pub mod types;
 pub use achievements::{parse_user_id3, steam_id3_to_id64};
 pub use autocat::{
     default_user_rule_packs_dir, load_rule_packs, parse_rule_pack_json, run_preset,
-    AutoCatPreset, AutoCatResult, AutoCatRule, ConflictPolicy, GameMetadata, MetadataIndex,
-    RulePack, UserScoreBand, YearMode,
+    run_preset_with_options, AchievementIndex, AchievementMode, AutoCatPreset, AutoCatResult,
+    AutoCatRule, ConflictPolicy, GameMetadata, MetadataIndex, RulePack, UserScoreBand, YearMode,
 };
 pub use backup::BackupManager;
 pub use collections::{
@@ -22,7 +22,7 @@ pub use collections::{
 };
 pub use config::AppConfig;
 pub use error::{Error, Result};
-pub use library::{load_live_library, load_owned_games};
+pub use library::{load_live_library, load_metadata_from_appinfo, load_owned_games, metadata_from_local_steam};
 pub use platform::{
     probe_steam_version, MockSteamPlatform, SteamCompatInfo, SteamPlatform,
     SUPPORTED_STEAM_LAYOUT, SUPPORTED_STEAM_NOTE,

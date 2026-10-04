@@ -15,6 +15,17 @@ pub struct UserScoreBand {
     pub max_inclusive: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AchievementMode {
+    /// ratio >= 1.0
+    AllUnlocked,
+    /// ratio == 0.0
+    NoneUnlocked,
+    /// 0 < ratio < 1
+    Partial,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AutoCatRule {
     Genre {
@@ -45,6 +56,10 @@ pub enum AutoCatRule {
     },
     UserScore {
         bands: Vec<UserScoreBand>,
+    },
+    Achievements {
+        prefix: String,
+        mode: AchievementMode,
     },
     Manual {
         add: Vec<String>,
