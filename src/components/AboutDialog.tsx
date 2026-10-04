@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import logo from "../assets/brand/logo-placeholder.svg";
+import logo from "../assets/brand/shelfmark-logo.jpg";
 import { GITHUB_REPO_URL } from "../config/brand";
 import type { MessageKey } from "../i18n";
 import type { SteamCompatView } from "../lib/steamCompat";

@@ -36,6 +36,7 @@ type Props = {
   onAdd: () => void;
   onRemove: () => void;
   onAutocat: () => void;
+  onOpenWizard: () => void;
   onQueueAutocat: () => void;
   onExport: () => void;
   t: (key: MessageKey, params?: Record<string, string | number>) => string;
@@ -62,6 +63,7 @@ export function CollectionsPage({
   onAdd,
   onRemove,
   onAutocat,
+  onOpenWizard,
   onQueueAutocat,
   onExport,
   t,
@@ -187,6 +189,9 @@ export function CollectionsPage({
       <section className="panel">
         <h2>{t("metadataAutocat")}</h2>
         <div className="row">
+          <button type="button" disabled={busy} onClick={onOpenWizard}>
+            AutoCat…
+          </button>
           <button type="button" disabled={busy} onClick={onAutocat}>
             {t("dryRunGenre")}
           </button>

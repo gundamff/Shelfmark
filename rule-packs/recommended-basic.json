@@ -1,0 +1,17 @@
+{
+  "id": "recommended-basic",
+  "name": { "en": "Recommended pack", "zh": "推荐规则包" },
+  "description": {
+    "en": "Genre + tags + developers/publishers.",
+    "zh": "类型 + Tag + 厂商/发行商。"
+  },
+  "recommended": true,
+  "needs_metadata": true,
+  "needs_achievements": false,
+  "default_conflict": "merge",
+  "rules": [
+    { "kind": "genre", "prefix": "g_" },
+    { "kind": "tags", "prefix": "tag_", "max_tags_per_game": 5 },
+    { "kind": "devpub", "prefix": "d_", "use_developers": true, "use_publishers": true }
+  ]
+}

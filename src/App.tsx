@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AboutDialog } from "./components/AboutDialog";
 import { AppShell, type AppTab } from "./components/AppShell";
+import { AutocatWizard } from "./components/AutocatWizard";
 import {
   localizeError,
   parseLocalePreference,
@@ -39,6 +40,7 @@ type AppConfig = {
 function App() {
   const [tab, setTab] = useState<AppTab>("settings");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [steam, setSteam] = useState<SteamInfo | null>(null);
   const [compat, setCompat] = useState<SteamCompatView | null>(null);
@@ -341,6 +343,7 @@ function App() {
                 setAutocat(await invoke<AutoCatSummary>("run_autocat_genre"));
               })
             }
+            onOpenWizard={() => setWizardOpen(true)}
             onQueueAutocat={() =>
               run("queue_last_autocat", async () => {
                 setPending(
@@ -367,6 +370,17 @@ function App() {
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
         compat={compat}
+        t={tr}
+      />
+      <AutocatWizard
+        open={wizardOpen}
+        locale={locale}
+        metaCoverage={metaCoverage}
+        gameCount={games.length}
+        onClose={() => setWizardOpen(false)}
+        onQueued={() => {
+          void refreshLists();
+        }}
         t={tr}
       />
     </main>

@@ -5,12 +5,13 @@ Windows-first Steam library organizer (spiritual successor to Depressurizer).
 
 ## Status
 
-- `steam-core`: platform detect, collections (JSON/LevelDB stores), backup, safe export, AutoCat dry-run
-- Desktop UI: Tauri 2 + React
-  - **Demo session**: fixtures → `%AppData%/Shelfmark/demo`
-  - **Live session**: reads/writes `{Steam}/userdata/<id>/config/cloudstorage/cloud-storage-namespace-1.json`
-  - Export **refuses while Steam is running**; backups under `%AppData%/Shelfmark/backups`
-  - Live AutoCat metadata enrichment still TBD (Genre dry-run will mostly skip)
+- `steam-core`: platform detect (+ Steam.exe FileVersion), collections, backup, safe export, AutoCat, **JSON rule packs**
+- Desktop UI: Tauri 2 + React — **Settings | Collections** shell, About dialog, Steam support line
+  - **Demo / live** sessions; export refuses while Steam running
+  - Metadata enrich with progress (Store API; local appinfo parser stubbed)
+  - AutoCat wizard loads `rule-packs/*.json` (+ `%AppData%/Shelfmark/rule-packs/`)
+  - Steam Web API key in config for achievement probes (full achievement AutoCat packs WIP)
+- Supported Steam layout is shown in the UI (Windows · `cloud-storage-namespace-1.json`, FileVersion 10.x)
 
 ## Develop
 

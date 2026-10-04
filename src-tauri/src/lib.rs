@@ -1,3 +1,4 @@
+mod achievements_api;
 mod enrich;
 
 use std::path::PathBuf;
@@ -8,10 +9,10 @@ use std::thread;
 use serde::Serialize;
 use tauri::Manager;
 use steam_core::{
-    load_live_library, load_owned_games, run_preset, AppConfig, AutoCatPreset, AutoCatResult,
-    AutoCatRule, BackupManager, Collection, CollectionChangeset, CollectionStore, Game,
-    GameMetadata, JsonCollectionStore, MetadataIndex, Session, SteamCloudCatalogStore,
-    SteamCompatInfo, SteamPlatform,
+    default_user_rule_packs_dir, load_live_library, load_owned_games, load_rule_packs, run_preset,
+    AppConfig, AutoCatPreset, AutoCatResult, AutoCatRule, BackupManager, Collection,
+    CollectionChangeset, CollectionStore, Game, GameMetadata, JsonCollectionStore, MetadataIndex,
+    RulePack, Session, SteamCloudCatalogStore, SteamCompatInfo, SteamPlatform,
 };
 #[cfg(windows)]
 use steam_core::WindowsSteamPlatform;
@@ -84,6 +85,47 @@ fn shelfmark_data_dir() -> Result<PathBuf, String> {
     let dir = base.join("Shelfmark");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
+}
+
+fn builtin_rule_packs_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../rule-packs")
+}
+
+#[tauri::command]
+fn list_rule_packs() -> Result<Vec<RulePack>, String> {
+    let user = default_user_rule_packs_dir().map_err(map_err)?;
+    let _ = std::fs::create_dir_all(&user);
+    load_rule_packs(&builtin_rule_packs_dir(), &user).map_err(map_err)
+}
+
+#[tauri::command]
+fn preview_rule_pack(
+    pack_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<AutoCatSummary, String> {
+    let packs = list_rule_packs()?;
+    let pack = packs
+        .into_iter()
+        .find(|p| p.id == pack_id)
+        .ok_or_else(|| format!("unknown rule pack: {pack_id}"))?;
+    let preset = pack.to_preset().map_err(map_err)?;
+    let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
+    let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
+    let result = run_preset(
+        &bundle.session.games,
+        &bundle.meta,
+        &bundle.session.collections,
+        &preset,
+    )
+    .map_err(map_err)?;
+    let summary = AutoCatSummary {
+        matched_games: result.matched_games,
+        skipped_missing_meta: result.skipped_missing_meta,
+        create_count: result.changeset.create.len(),
+        add_member_ops: result.changeset.add_members.len(),
+    };
+    bundle.last_autocat = Some(result);
+    Ok(summary)
 }
 
 #[tauri::command]
@@ -475,6 +517,19 @@ fn enrich_start(
 }
 
 #[tauri::command]
+fn probe_achievement_ratio(
+    app_id: u32,
+    user_id3: String,
+) -> Result<Option<f32>, String> {
+    let cfg = AppConfig::load().map_err(map_err)?;
+    let key = cfg
+        .steam_web_api_key
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| "Steam Web API key not configured".to_string())?;
+    achievements_api::fetch_achievement_ratio(&key, &user_id3, app_id)
+}
+
+#[tauri::command]
 fn metadata_coverage(state: tauri::State<'_, AppState>) -> Result<u32, String> {
     let guard = state.inner.lock().map_err(|e| e.to_string())?;
     let bundle = guard.as_ref().ok_or_else(|| "no session open".to_string())?;
@@ -562,11 +617,14 @@ pub fn run() {
             add_games_to_collection,
             remove_games_from_collection,
             run_autocat_genre,
+            list_rule_packs,
+            preview_rule_pack,
             queue_last_autocat,
             enrich_metadata,
             enrich_start,
             enrich_status,
             enrich_stop,
+            probe_achievement_ratio,
             metadata_coverage,
             export_session
         ])

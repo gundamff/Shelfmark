@@ -1,0 +1,13 @@
+{
+  "id": "genre",
+  "name": { "en": "By genre", "zh": "按游戏类型" },
+  "description": {
+    "en": "Create collections from Steam Store genres.",
+    "zh": "按 Steam 商店类型创建收藏集。"
+  },
+  "recommended": false,
+  "needs_metadata": true,
+  "needs_achievements": false,
+  "default_conflict": "merge",
+  "rules": [{ "kind": "genre", "prefix": "g_", "max_categories": 0 }]
+}

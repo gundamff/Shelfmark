@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import logo from "../assets/brand/logo-placeholder.svg";
+import logo from "../assets/brand/shelfmark-logo.jpg";
 import type { MessageKey } from "../i18n";
 import type { SteamCompatView } from "../lib/steamCompat";
 import { SteamCompatBar } from "./SteamCompatBar";
