@@ -112,6 +112,15 @@ button:disabled {
   display: flex;
   gap: 0.6rem;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: #b7b3ab;
 }
 
 .kv {

@@ -8,6 +8,9 @@ use crate::{Error, Result};
 pub struct AppConfig {
     pub last_user_id3: Option<String>,
     pub steam_path_override: Option<String>,
+    /// UI locale preference: `"system"`, `"en"`, `"zh"`. Missing = system.
+    #[serde(default)]
+    pub locale: Option<String>,
 }
 
 impl AppConfig {
@@ -62,6 +65,7 @@ mod tests {
         let c = AppConfig {
             last_user_id3: Some("123".into()),
             steam_path_override: None,
+            locale: Some("zh".into()),
         };
         let s = serde_json::to_string(&c).unwrap();
         let back: AppConfig = serde_json::from_str(&s).unwrap();
