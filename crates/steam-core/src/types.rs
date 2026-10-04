@@ -1,19 +1,21 @@
+use serde::{Deserialize, Serialize};
+
 pub type AppId = u32;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
     pub app_id: AppId,
     pub name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Collection {
     pub id: String,
     pub name: String,
     pub app_ids: Vec<AppId>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionChangeset {
     pub create: Vec<Collection>,
     pub rename: Vec<(String, String)>,

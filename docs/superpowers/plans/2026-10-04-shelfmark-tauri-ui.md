@@ -1,8 +1,8 @@
 # Shelfmark Tauri UI Vertical Slice Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans or subagent-driven-development. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans or subagent-driven-development. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** Ship a Windows Tauri 2 + React + TypeScript shell that can detect Steam, open a **demo session** (fixtures), run AutoCat dry-run, preview pending changeset, and export only when Steam is closed (writes demo JSON store under AppData â€” not live Steam LevelDB yet).
+**Goal:** Ship a Windows Tauri 2 + React + TypeScript shell that can detect Steam, open a **demo session** (fixtures), run AutoCat dry-run, preview pending changeset, and export only when Steam is closed (writes demo JSON store under AppData â€?not live Steam LevelDB yet).
 
 **Architecture:** Thin `src-tauri` commands over `steam-core`. React holds view state; session lives in Rust `AppState`. Live Steam collection write deferred until real parsers land; UI still enforces export safety via `SteamPlatform::is_steam_running`.
 
@@ -32,26 +32,26 @@ crates/steam-core/   # existing
 
 ### Task 1: Scaffold Tauri 2 + React + Vite
 
-- [ ] Workspace + npm + `src-tauri` compile
-- [ ] `npm run build` / `cargo check -p shelfmark` green
-- [ ] Commit
+- [x] Workspace + npm + `src-tauri` compile
+- [x] `npm run build` / `cargo check -p shelfmark` green
+- [x] Commit
 
 ### Task 2: Rust commands + AppState
 
 Commands: `detect_steam`, `open_demo_session`, `list_games`, `list_collections`, `pending_changeset`, `run_autocat_genre`, `queue_last_autocat`, `export_session`, `is_steam_running`
 
-- [ ] Unit-testable state helpers where possible
-- [ ] Commit
+- [x] Unit-testable state helpers where possible
+- [x] Commit
 
 ### Task 3: React UI vertical slice
 
 Screens: Steam status, Demo open, game/collection lists, AutoCat Genre button, pending JSON preview, Export button with confirm.
 
-- [ ] Vitest for a pure UI helper (e.g. formatPending)
-- [ ] Commit
+- [x] Vitest for a pure UI helper (e.g. formatPending)
+- [x] Commit
 
 ### Task 4: Docs + gate
 
-- [ ] README run instructions (`npm install`, `npm run tauri dev`)
-- [ ] `cargo test -p steam-core` + `npm test` + `npm run build` green
-- [ ] Commit; merge when done
+- [x] README run instructions (`npm install`, `npm run tauri dev`)
+- [x] `cargo test -p steam-core` + `npm test` + `npm run build` green
+- [x] Commit; merge when done

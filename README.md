@@ -5,7 +5,8 @@ Windows-first Steam library organizer (spiritual successor to Depressurizer).
 
 ## Status
 
-`steam-core` is the pure Rust business library (no UI yet).
+- `steam-core`: platform detect, collections (JSON/LevelDB stores), backup, safe export, AutoCat dry-run
+- Desktop UI: Tauri 2 + React — **demo session** (fixtures → `%AppData%/Shelfmark/demo`). Live Steam LevelDB write is not wired yet; export still **refuses while Steam is running**.
 
 ## Develop
 
@@ -13,26 +14,18 @@ Windows-first Steam library organizer (spiritual successor to Depressurizer).
 cd D:\gits\Depressurizer
 $env:HTTP_PROXY = "http://127.0.0.1:7890"
 $env:HTTPS_PROXY = "http://127.0.0.1:7890"
+
 cargo test -p steam-core
+npm install
+npm test
+npm run build
+npm run tauri dev
 ```
 
-AutoCat dry-run lives in `steam_core::autocat` (`run_preset` → `CollectionChangeset`). Queue into a session with `Session::queue_autocat`.
-
-Windows Steam is detected via registry, then `C:\Program Files (x86)\Steam`.
-
-### Manual safety checklist (live write — later UI plan)
-
-1. Import / load is read-only in unit tests (fixtures).
-2. Before any real export: **fully exit Steam**.
-3. Export creates a timestamped backup under the app backup dir, then writes.
-4. If Steam is running, export must hard-refuse.
-
 ## Reference
-
-Read-only upstream clone for format research:
 
 ```powershell
 git clone --depth 1 https://github.com/julianxhokaxhiu/Depressurizer.git reference/depressurizer
 ```
 
-See `reference/README.md`. GPL sources must not be copied into this tree.
+See `reference/README.md`.

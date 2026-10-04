@@ -1,0 +1,23 @@
+[package]
+name = "shelfmark"
+version.workspace = true
+description = "Shelfmark — Steam library organizer"
+authors = ["Shelfmark contributors"]
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "shelfmark_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+steam-core = { path = "../crates/steam-core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+thiserror = "2"

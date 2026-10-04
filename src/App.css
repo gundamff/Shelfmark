@@ -1,0 +1,141 @@
+:root {
+  color: #e8e6e3;
+  background: #1a1f24;
+  font-family: "Segoe UI", "IBM Plex Sans", sans-serif;
+  line-height: 1.45;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 500px at 10% -10%, #2d4a3e 0%, transparent 55%),
+    radial-gradient(900px 400px at 100% 0%, #3a2f1f 0%, transparent 50%),
+    #1a1f24;
+}
+
+.app {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 2.6rem;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+}
+
+.tagline {
+  margin: 0.4rem 0 1.5rem;
+  color: #b7b3ab;
+  max-width: 40rem;
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 1rem 1.1rem 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.panel.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+button {
+  appearance: none;
+  border: 1px solid #6f9b7c;
+  background: #2a4736;
+  color: #f2f5f1;
+  border-radius: 6px;
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+  font: inherit;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0.75rem 0 0;
+}
+
+.kv dt {
+  color: #9a958c;
+}
+
+.kv dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.path {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.muted {
+  color: #9a958c;
+  font-size: 0.9rem;
+}
+
+.banner {
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.banner.error {
+  background: #4a2222;
+  border: 1px solid #a35;
+}
+
+.banner.ok {
+  background: #1f3d2c;
+  border: 1px solid #4a8;
+}
+
+.code {
+  background: #0f1317;
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow: auto;
+  max-height: 220px;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 720px) {
+  .panel.split {
+    grid-template-columns: 1fr;
+  }
+}
