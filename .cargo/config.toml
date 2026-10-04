@@ -7,5 +7,8 @@ registry = "sparse+https://rsproxy.cn/index/"
 [registries.rsproxy]
 index = "https://rsproxy.cn/crates.io-index"
 
+[http]
+proxy = "http://127.0.0.1:7890"
+
 [net]
 git-fetch-with-cli = true
