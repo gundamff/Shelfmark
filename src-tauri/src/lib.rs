@@ -1,22 +1,31 @@
+mod achievements_api;
 mod enrich;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::thread;
 
 use serde::Serialize;
+use tauri::Manager;
 use steam_core::{
-    load_live_library, load_owned_games, run_preset, AppConfig, AutoCatPreset, AutoCatResult,
-    AutoCatRule, BackupManager, Collection, CollectionChangeset, CollectionStore, Game,
-    GameMetadata, JsonCollectionStore, MetadataIndex, Session, SteamCloudCatalogStore,
-    SteamPlatform,
+    default_user_rule_packs_dir, load_live_library, load_owned_games, load_rule_packs, run_preset,
+    AppConfig, AutoCatPreset, AutoCatResult, AutoCatRule, BackupManager, Collection,
+    CollectionChangeset, CollectionStore, Game, GameMetadata, JsonCollectionStore, MetadataIndex,
+    RulePack, Session, SteamCloudCatalogStore, SteamCompatInfo, SteamPlatform,
 };
 #[cfg(windows)]
 use steam_core::WindowsSteamPlatform;
 
-use crate::enrich::{enrich_metadata_index, EnrichReport, MetaCache};
+use crate::enrich::{
+    enrich_metadata_index, enrich_metadata_index_with_progress, EnrichReport, EnrichStatus,
+    MetaCache,
+};
 
 struct AppState {
     inner: Mutex<Option<SessionBundle>>,
+    enrich: Mutex<EnrichStatus>,
+    enrich_stop: AtomicBool,
 }
 
 #[derive(Clone, Copy)]
@@ -39,6 +48,10 @@ struct SteamInfo {
     root: String,
     users: Vec<String>,
     steam_running: bool,
+    supported_steam: String,
+    supported_steam_note: String,
+    detected_steam_version: Option<String>,
+    steam_within_support: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -74,6 +87,47 @@ fn shelfmark_data_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+fn builtin_rule_packs_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../rule-packs")
+}
+
+#[tauri::command]
+fn list_rule_packs() -> Result<Vec<RulePack>, String> {
+    let user = default_user_rule_packs_dir().map_err(map_err)?;
+    let _ = std::fs::create_dir_all(&user);
+    load_rule_packs(&builtin_rule_packs_dir(), &user).map_err(map_err)
+}
+
+#[tauri::command]
+fn preview_rule_pack(
+    pack_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<AutoCatSummary, String> {
+    let packs = list_rule_packs()?;
+    let pack = packs
+        .into_iter()
+        .find(|p| p.id == pack_id)
+        .ok_or_else(|| format!("unknown rule pack: {pack_id}"))?;
+    let preset = pack.to_preset().map_err(map_err)?;
+    let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
+    let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
+    let result = run_preset(
+        &bundle.session.games,
+        &bundle.meta,
+        &bundle.session.collections,
+        &preset,
+    )
+    .map_err(map_err)?;
+    let summary = AutoCatSummary {
+        matched_games: result.matched_games,
+        skipped_missing_meta: result.skipped_missing_meta,
+        create_count: result.changeset.create.len(),
+        add_member_ops: result.changeset.add_members.len(),
+    };
+    bundle.last_autocat = Some(result);
+    Ok(summary)
+}
+
 #[tauri::command]
 fn detect_steam() -> Result<SteamInfo, String> {
     #[cfg(windows)]
@@ -82,16 +136,39 @@ fn detect_steam() -> Result<SteamInfo, String> {
         let root = platform.steam_root().map_err(map_err)?;
         let users = platform.list_user_ids3(&root).map_err(map_err)?;
         let steam_running = platform.is_steam_running().map_err(map_err)?;
+        let compat = SteamCompatInfo::probe(&root);
         return Ok(SteamInfo {
             root: root.display().to_string(),
             users,
             steam_running,
+            supported_steam: compat.supported_label,
+            supported_steam_note: compat.supported_note,
+            detected_steam_version: compat.detected_version,
+            steam_within_support: compat.within_support,
         });
     }
     #[cfg(not(windows))]
     {
         Err("Steam detection is Windows-only in this MVP".into())
     }
+}
+
+#[tauri::command]
+fn steam_compat(steam_root: Option<String>) -> SteamCompatInfo {
+    match steam_root {
+        Some(root) if !root.is_empty() => SteamCompatInfo::probe(PathBuf::from(root).as_path()),
+        _ => SteamCompatInfo {
+            supported_label: steam_core::SUPPORTED_STEAM_LAYOUT.to_string(),
+            supported_note: steam_core::SUPPORTED_STEAM_NOTE.to_string(),
+            detected_version: None,
+            within_support: None,
+        },
+    }
+}
+
+#[tauri::command]
+fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
@@ -264,6 +341,17 @@ fn save_locale(locale: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn save_api_key(api_key: String) -> Result<(), String> {
+    let mut cfg = AppConfig::load().map_err(map_err)?;
+    cfg.steam_web_api_key = if api_key.is_empty() {
+        None
+    } else {
+        Some(api_key)
+    };
+    cfg.save().map_err(map_err)
+}
+
+#[tauri::command]
 fn create_collection(
     name: String,
     state: tauri::State<'_, AppState>,
@@ -353,6 +441,95 @@ fn enrich_metadata(
 }
 
 #[tauri::command]
+fn enrich_status(state: tauri::State<'_, AppState>) -> Result<EnrichStatus, String> {
+    Ok(state.enrich.lock().map_err(|e| e.to_string())?.clone())
+}
+
+#[tauri::command]
+fn enrich_stop(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.enrich_stop.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+fn enrich_start(
+    app: tauri::AppHandle,
+    max_fetch: Option<u32>,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    {
+        let enrich = state.enrich.lock().map_err(|e| e.to_string())?;
+        if enrich.running {
+            return Err("enrich already running".into());
+        }
+    }
+    state.enrich_stop.store(false, Ordering::SeqCst);
+
+    let budget = max_fetch.unwrap_or(40) as usize;
+    let ids = {
+        let guard = state.inner.lock().map_err(|e| e.to_string())?;
+        let bundle = guard.as_ref().ok_or_else(|| "no session open".to_string())?;
+        bundle
+            .session
+            .games
+            .iter()
+            .map(|g| g.app_id)
+            .collect::<Vec<_>>()
+    };
+
+    {
+        let mut enrich = state.enrich.lock().map_err(|e| e.to_string())?;
+        *enrich = EnrichStatus {
+            running: true,
+            total: ids.len() as u32,
+            done: 0,
+            from_local: 0,
+            from_store: 0,
+            failed: 0,
+            remaining: ids.len() as u32,
+            stopped: false,
+        };
+    }
+
+    thread::spawn(move || {
+        let state = app.state::<AppState>();
+        let Ok(mut guard) = state.inner.lock() else {
+            return;
+        };
+        let Some(bundle) = guard.as_mut() else {
+            return;
+        };
+        let mut on_progress = |s: &EnrichStatus| {
+            if let Ok(mut slot) = state.enrich.lock() {
+                *slot = s.clone();
+            }
+        };
+        let _ = enrich_metadata_index_with_progress(
+            &mut bundle.meta,
+            &ids,
+            budget,
+            Some(&mut on_progress),
+            Some(&|| state.enrich_stop.load(Ordering::SeqCst)),
+        );
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn probe_achievement_ratio(
+    app_id: u32,
+    user_id3: String,
+) -> Result<Option<f32>, String> {
+    let cfg = AppConfig::load().map_err(map_err)?;
+    let key = cfg
+        .steam_web_api_key
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| "Steam Web API key not configured".to_string())?;
+    achievements_api::fetch_achievement_ratio(&key, &user_id3, app_id)
+}
+
+#[tauri::command]
 fn metadata_coverage(state: tauri::State<'_, AppState>) -> Result<u32, String> {
     let guard = state.inner.lock().map_err(|e| e.to_string())?;
     let bundle = guard.as_ref().ok_or_else(|| "no session open".to_string())?;
@@ -419,9 +596,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             inner: Mutex::new(None),
+            enrich: Mutex::new(EnrichStatus::default()),
+            enrich_stop: AtomicBool::new(false),
         })
         .invoke_handler(tauri::generate_handler![
             detect_steam,
+            steam_compat,
+            app_version,
             is_steam_running,
             open_demo_session,
             open_live_session,
@@ -431,12 +612,19 @@ pub fn run() {
             get_config,
             save_last_user,
             save_locale,
+            save_api_key,
             create_collection,
             add_games_to_collection,
             remove_games_from_collection,
             run_autocat_genre,
+            list_rule_packs,
+            preview_rule_pack,
             queue_last_autocat,
             enrich_metadata,
+            enrich_start,
+            enrich_status,
+            enrich_stop,
+            probe_achievement_ratio,
             metadata_coverage,
             export_session
         ])

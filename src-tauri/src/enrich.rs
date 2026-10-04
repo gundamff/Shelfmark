@@ -132,29 +132,87 @@ pub fn fetch_appdetails(app_id: AppId) -> Result<Option<GameMetadata>, String> {
     Ok(metadata_from_appdetails_data(data))
 }
 
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnrichStatus {
+    pub running: bool,
+    pub total: u32,
+    pub done: u32,
+    pub from_local: u32,
+    pub from_store: u32,
+    pub failed: u32,
+    pub remaining: u32,
+    pub stopped: bool,
+}
+
 /// Enrich missing entries in `meta` for `app_ids`, using disk cache + store API.
 pub fn enrich_metadata_index(
     meta: &mut MetadataIndex,
     app_ids: &[AppId],
     max_fetch: usize,
 ) -> Result<EnrichReport, String> {
+    enrich_metadata_index_with_progress(meta, app_ids, max_fetch, None, None)
+}
+
+pub fn enrich_metadata_index_with_progress(
+    meta: &mut MetadataIndex,
+    app_ids: &[AppId],
+    max_fetch: usize,
+    mut on_progress: Option<&mut dyn FnMut(&EnrichStatus)>,
+    should_stop: Option<&dyn Fn() -> bool>,
+) -> Result<EnrichReport, String> {
     let mut cache = MetaCache::load();
     let mut report = EnrichReport::default();
+    let total = app_ids.len() as u32;
+    let mut status = EnrichStatus {
+        running: true,
+        total,
+        done: 0,
+        from_local: 0,
+        from_store: 0,
+        failed: 0,
+        remaining: total,
+        stopped: false,
+    };
 
     for &app_id in app_ids {
+        if should_stop.is_some_and(|f| f()) {
+            status.stopped = true;
+            status.running = false;
+            if let Some(cb) = on_progress.as_mut() {
+                cb(&status);
+            }
+            break;
+        }
         if let Some(cached) = cache.apps.get(&app_id) {
             if !cached.genres.is_empty() || cached.release_year.is_some() {
                 meta.insert(app_id, cached.clone());
                 report.from_cache += 1;
+                status.from_local += 1;
+                status.done += 1;
+                status.remaining = total.saturating_sub(status.done);
+                if let Some(cb) = on_progress.as_mut() {
+                    cb(&status);
+                }
                 continue;
             }
         }
         if meta.get(&app_id).is_some_and(|m| !m.genres.is_empty()) {
             report.already_present += 1;
+            status.done += 1;
+            status.remaining = total.saturating_sub(status.done);
+            if let Some(cb) = on_progress.as_mut() {
+                cb(&status);
+            }
             continue;
         }
         if report.fetched >= max_fetch as u32 {
             report.skipped_budget += 1;
+            status.done += 1;
+            status.remaining = total.saturating_sub(status.done);
+            if let Some(cb) = on_progress.as_mut() {
+                cb(&status);
+            }
             continue;
         }
 
@@ -163,18 +221,30 @@ pub fn enrich_metadata_index(
                 cache.apps.insert(app_id, m.clone());
                 meta.insert(app_id, m);
                 report.fetched += 1;
+                status.from_store += 1;
             }
             Ok(None) => {
                 report.failed += 1;
+                status.failed += 1;
             }
             Err(_) => {
                 report.failed += 1;
+                status.failed += 1;
             }
+        }
+        status.done += 1;
+        status.remaining = total.saturating_sub(status.done);
+        if let Some(cb) = on_progress.as_mut() {
+            cb(&status);
         }
         // Be polite to Steam Store.
         thread::sleep(Duration::from_millis(300));
     }
 
+    status.running = false;
+    if let Some(cb) = on_progress.as_mut() {
+        cb(&status);
+    }
     let _ = cache.save();
     Ok(report)
 }
