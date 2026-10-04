@@ -1,0 +1,14 @@
+{
+  "collections": [
+    {
+      "id": "c-indie",
+      "name": "Indie",
+      "added": [220, 4000]
+    },
+    {
+      "id": "c-fps",
+      "name": "FPS",
+      "added": [10]
+    }
+  ]
+}

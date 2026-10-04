@@ -1,10 +1,19 @@
+pub mod backup;
 pub mod collections;
 pub mod error;
+pub mod library;
 pub mod platform;
+pub mod session;
 pub mod types;
 
+pub use backup::BackupManager;
+pub use collections::{
+    apply_changeset, CollectionStore, JsonCollectionStore, LevelDbCollectionStore,
+};
 pub use error::{Error, Result};
+pub use library::load_owned_games;
 pub use platform::{MockSteamPlatform, SteamPlatform};
+pub use session::Session;
 pub use types::{AppId, Collection, CollectionChangeset, Game};
 
 #[cfg(windows)]
