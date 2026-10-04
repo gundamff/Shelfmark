@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::autocat::AutoCatResult;
 use crate::backup::BackupManager;
 use crate::collections::changeset::apply_changeset;
 use crate::collections::store::CollectionStore;
@@ -34,6 +35,17 @@ impl Session {
             && self.pending.remove_members.is_empty()
     }
 
+    /// Merge an AutoCat dry-run into pending (create / rename / delete / member ops).
+    pub fn queue_autocat(&mut self, result: AutoCatResult) {
+        self.pending.create.extend(result.changeset.create);
+        self.pending.rename.extend(result.changeset.rename);
+        self.pending.delete.extend(result.changeset.delete);
+        self.pending.add_members.extend(result.changeset.add_members);
+        self.pending
+            .remove_members
+            .extend(result.changeset.remove_members);
+    }
+
     pub fn export(
         &mut self,
         platform: &dyn SteamPlatform,
@@ -54,5 +66,41 @@ impl Session {
         store.save(&self.collections)?;
         self.pending = CollectionChangeset::default();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::autocat::{run_preset, AutoCatPreset, AutoCatRule, GameMetadata};
+    use std::collections::HashMap;
+
+    #[test]
+    fn queue_autocat_merges_into_pending() {
+        let games = vec![Game {
+            app_id: 10,
+            name: "CS".into(),
+        }];
+        let mut meta = HashMap::new();
+        meta.insert(
+            10,
+            GameMetadata {
+                genres: vec!["Action".into()],
+                ..Default::default()
+            },
+        );
+        let preset = AutoCatPreset {
+            name: "g".into(),
+            rules: vec![AutoCatRule::Genre {
+                prefix: "g_".into(),
+                max_categories: 0,
+                remove_existing: false,
+            }],
+        };
+        let result = run_preset(&games, &meta, &[], &preset).unwrap();
+        let mut session = Session::new(games, vec![], vec![]);
+        session.queue_autocat(result);
+        assert!(!session.is_pending_empty());
+        assert!(session.pending.create.iter().any(|c| c.name == "g_Action"));
     }
 }

@@ -1,3 +1,4 @@
+pub mod autocat;
 pub mod backup;
 pub mod collections;
 pub mod error;
@@ -6,6 +7,10 @@ pub mod platform;
 pub mod session;
 pub mod types;
 
+pub use autocat::{
+    run_preset, AutoCatPreset, AutoCatResult, AutoCatRule, GameMetadata, MetadataIndex,
+    UserScoreBand, YearMode,
+};
 pub use backup::BackupManager;
 pub use collections::{
     apply_changeset, CollectionStore, JsonCollectionStore, LevelDbCollectionStore,

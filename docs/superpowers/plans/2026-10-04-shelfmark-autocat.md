@@ -1,10 +1,10 @@
 # Shelfmark AutoCat Engine Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add a dry-run AutoCat engine in `steam-core` that turns rule presets + local game metadata into a `CollectionChangeset` (Genre, Tags, Year, DevPub, Manual, Flags, UserScore; no HLTB).
 
-**Architecture:** Pure Rust module `autocat` over an in-memory `GameMetadata` map. Missing fields â†’ skip + count (`PartialMeta` stats), never fail the whole run. Output merges into `CollectionChangeset` (create collections + add members). No Steam writes, no Tauri, no Depressurizer import.
+**Architecture:** Pure Rust module `autocat` over an in-memory `GameMetadata` map. Missing fields â†?skip + count (`PartialMeta` stats), never fail the whole run. Output merges into `CollectionChangeset` (create collections + add members). No Steam writes, no Tauri, no Depressurizer import.
 
 **Tech Stack:** Existing `steam-core` (serde, thiserror). Unit tests with hand-built metadata fixtures.
 
@@ -14,7 +14,7 @@
 - MIT greenfield; do not copy GPL from `reference/depressurizer/`.
 - Dry-run only: AutoCat produces changeset; Session.export remains the write path.
 - MVP types: Genre, Tags, Year, DevPub, Manual, Flags, UserScore. No HLTB.
-- Missing metadata â†’ skip game for that rule + increment skip counter.
+- Missing metadata â†?skip game for that rule + increment skip counter.
 - Every task ends with `cargo test -p steam-core` green + commit.
 
 ## File structure
@@ -26,7 +26,7 @@ crates/steam-core/src/
     mod.rs
     meta.rs                # GameMetadata
     rules.rs               # AutoCatRule / AutoCatPreset enums
-    engine.rs              # run_preset â†’ AutoCatResult
+    engine.rs              # run_preset â†?AutoCatResult
   lib.rs                   # re-exports
 ```
 
@@ -46,9 +46,9 @@ crates/steam-core/src/
 - `AutoCatPreset { name, rules: Vec<AutoCatRule> }`
 - `AutoCatResult { changeset: CollectionChangeset, matched_games: u32, skipped_missing_meta: u32 }`
 
-- [ ] **Step 1:** Add failing test that `GameMetadata::default()` has empty vectors
-- [ ] **Step 2:** Implement types; tests pass
-- [ ] **Step 3:** Commit `feat(core): add AutoCat metadata and rule types`
+- [x] **Step 1:** Add failing test that `GameMetadata::default()` has empty vectors
+- [x] **Step 2:** Implement types; tests pass
+- [x] **Step 3:** Commit `feat(core): add AutoCat metadata and rule types`
 
 ---
 
@@ -62,11 +62,11 @@ crates/steam-core/src/
 **Interfaces:**
 - `pub fn run_preset(games: &[Game], meta: &MetadataIndex, existing: &[Collection], preset: &AutoCatPreset) -> Result<AutoCatResult>`
 - Genre rule: `AutoCatRule::Genre { prefix: String, max_categories: u32 /* 0 = unlimited */, remove_existing: bool }`
-- For each game with genres: ensure collection `prefix+genre` exists (create), add app_id; if no genres in meta â†’ skip++
+- For each game with genres: ensure collection `prefix+genre` exists (create), add app_id; if no genres in meta â†?skip++
 
-- [ ] **Step 1:** RED test â€” two games, Action/Indie genres â†’ changeset creates/adds
-- [ ] **Step 2:** Implement `run_preset` + Genre
-- [ ] **Step 3:** GREEN + commit `feat(core): AutoCat Genre rule dry-run`
+- [x] **Step 1:** RED test â€?two games, Action/Indie genres â†?changeset creates/adds
+- [x] **Step 2:** Implement `run_preset` + Genre
+- [x] **Step 3:** GREEN + commit `feat(core): AutoCat Genre rule dry-run`
 
 ---
 
@@ -75,13 +75,13 @@ crates/steam-core/src/
 **Files:** Modify `rules.rs`, `engine.rs`
 
 **Behavior:**
-- Tags: `{ prefix, max_tags_per_game, included: Option<Vec<String>> }` â€” if `included` is Some, only those tags; else all tags up to max
-- Year: `{ mode: Individual | Decade, prefix }` â€” collection name from year or `2010s`
-- Flags: `{ prefix, included: Vec<String> }` â€” only listed flags
+- Tags: `{ prefix, max_tags_per_game, included: Option<Vec<String>> }` â€?if `included` is Some, only those tags; else all tags up to max
+- Year: `{ mode: Individual | Decade, prefix }` â€?collection name from year or `2010s`
+- Flags: `{ prefix, included: Vec<String> }` â€?only listed flags
 
-- [ ] **Step 1:** RED tests for each
-- [ ] **Step 2:** Implement
-- [ ] **Step 3:** Commit `feat(core): AutoCat Tags, Year, Flags rules`
+- [x] **Step 1:** RED tests for each
+- [x] **Step 2:** Implement
+- [x] **Step 3:** Commit `feat(core): AutoCat Tags, Year, Flags rules`
 
 ---
 
@@ -91,25 +91,25 @@ crates/steam-core/src/
 
 **Behavior:**
 - DevPub: `{ prefix, use_developers: bool, use_publishers: bool }`
-- UserScore: `{ rules: Vec<{ name, min_inclusive, max_inclusive }> }` â€” first match wins; score missing â†’ skip
-- Manual: `{ add: Vec<String> /* collection names */, remove: Vec<String>, app_ids: Vec<AppId> }` â€” only listed apps (or empty app_ids = all games in `games`)
+- UserScore: `{ rules: Vec<{ name, min_inclusive, max_inclusive }> }` â€?first match wins; score missing â†?skip
+- Manual: `{ add: Vec<String> /* collection names */, remove: Vec<String>, app_ids: Vec<AppId> }` â€?only listed apps (or empty app_ids = all games in `games`)
 
-- [ ] **Step 1:** RED tests
-- [ ] **Step 2:** Implement
-- [ ] **Step 3:** Commit `feat(core): AutoCat DevPub, UserScore, Manual rules`
+- [x] **Step 1:** RED tests
+- [x] **Step 2:** Implement
+- [x] **Step 3:** Commit `feat(core): AutoCat DevPub, UserScore, Manual rules`
 
 ---
 
 ### Task 5: Wire Session helper + docs gate
 
 **Files:**
-- Modify: `session/mod.rs` â€” `Session::queue_autocat(&mut self, result: AutoCatResult)` merges changeset into pending (create + add_members only for MVP merge)
-- Modify: `README.md` â€” how to run AutoCat tests
+- Modify: `session/mod.rs` â€?`Session::queue_autocat(&mut self, result: AutoCatResult)` merges changeset into pending (create + add_members only for MVP merge)
+- Modify: `README.md` â€?how to run AutoCat tests
 - Test: session merges pending after autocat
 
-- [ ] **Step 1:** RED merge test
-- [ ] **Step 2:** Implement merge helper
-- [ ] **Step 3:** `cargo test -p steam-core` all green; commit `feat(core): queue AutoCat result into session pending`
+- [x] **Step 1:** RED merge test
+- [x] **Step 2:** Implement merge helper
+- [x] **Step 3:** `cargo test -p steam-core` all green; commit `feat(core): queue AutoCat result into session pending`
 
 ---
 
@@ -117,8 +117,8 @@ crates/steam-core/src/
 
 | Spec | Task |
 |------|------|
-| AutoCat Genre/Tags/Year/DevPub/Manual/Flags/UserScore | 2â€“4 |
-| Dry-run â†’ changeset | 2 |
-| PartialMeta skip | 2â€“4 |
+| AutoCat Genre/Tags/Year/DevPub/Manual/Flags/UserScore | 2â€? |
+| Dry-run â†?changeset | 2 |
+| PartialMeta skip | 2â€? |
 | No HLTB / no Depressurizer import | all |
 | Session pending | 5 |

@@ -10,11 +10,13 @@ Windows-first Steam library organizer (spiritual successor to Depressurizer).
 ## Develop
 
 ```powershell
-cd D:\gits\Depressurizer\.worktrees\shelfmark-core-collections
+cd D:\gits\Depressurizer
 $env:HTTP_PROXY = "http://127.0.0.1:7890"
 $env:HTTPS_PROXY = "http://127.0.0.1:7890"
 cargo test -p steam-core
 ```
+
+AutoCat dry-run lives in `steam_core::autocat` (`run_preset` → `CollectionChangeset`). Queue into a session with `Session::queue_autocat`.
 
 Windows Steam is detected via registry, then `C:\Program Files (x86)\Steam`.
 
