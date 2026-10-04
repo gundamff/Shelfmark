@@ -40,7 +40,7 @@
   - `pub fn probe_steam_version(steam_root: &Path) -> Option<String>` — read `steam.exe` FileVersion via Windows API or parse `Package/steam_client_win32.manifest` / similar; pin **one** method in implementation (prefer `steam.exe` version resource on Windows).
   - Initial support window: document in constant `SUPPORTED_STEAM_NOTE` (update when maintainers re-test), e.g. tested package date/build string; `within_support` may be `None` if detection fails.
 
-- [ ] **Step 1: Write failing test** for label non-empty and probe returns `None` on fake empty dir
+- [x] **Step 1: Write failing test** for label non-empty and probe returns `None` on fake empty dir
 
 ```rust
 #[test]
@@ -54,16 +54,16 @@ fn probe_missing_root_is_none() {
 }
 ```
 
-- [ ] **Step 2: Run** `cargo test -p steam-core steam_version -- --nocapture` — expect FAIL (module missing)
+- [x] **Step 2: Run** `cargo test -p steam-core steam_version -- --nocapture` — expect FAIL (module missing)
 
-- [ ] **Step 3: Implement** `steam_version.rs` + wire into `SteamInfo` / detect response as:
+- [x] **Step 3: Implement** `steam_version.rs` + wire into `SteamInfo` / detect response as:
   - `supportedSteam: string`
   - `detectedSteamVersion: string | null`
   - `steamWithinSupport: boolean | null`
 
-- [ ] **Step 4: Run tests** — PASS
+- [x] **Step 4: Run tests** — PASS
 
-- [ ] **Step 5: Commit** `feat: probe Steam version and declare supported layout`
+- [x] **Step 5: Commit** `feat: probe Steam version and declare supported layout`
 
 ---
 

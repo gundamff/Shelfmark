@@ -291,6 +291,17 @@ fn save_locale(locale: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn save_api_key(api_key: String) -> Result<(), String> {
+    let mut cfg = AppConfig::load().map_err(map_err)?;
+    cfg.steam_web_api_key = if api_key.is_empty() {
+        None
+    } else {
+        Some(api_key)
+    };
+    cfg.save().map_err(map_err)
+}
+
+#[tauri::command]
 fn create_collection(
     name: String,
     state: tauri::State<'_, AppState>,
@@ -460,6 +471,7 @@ pub fn run() {
             get_config,
             save_last_user,
             save_locale,
+            save_api_key,
             create_collection,
             add_games_to_collection,
             remove_games_from_collection,

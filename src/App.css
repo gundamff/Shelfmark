@@ -21,20 +21,140 @@ body {
 .app {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 3rem;
+  padding: 1rem 1.5rem 3rem;
 }
 
-.hero h1 {
-  margin: 0;
-  font-size: 2.6rem;
-  letter-spacing: -0.03em;
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.brand-name {
+  font-size: 1.35rem;
   font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
-.tagline {
-  margin: 0.4rem 0 1.5rem;
+.session-chip {
+  margin-left: 0.35rem;
+  font-size: 0.8rem;
+  color: #9a958c;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+}
+
+button.tab {
+  background: transparent;
+  border-color: transparent;
   color: #b7b3ab;
-  max-width: 40rem;
+}
+
+button.tab.active {
+  background: #2a4736;
+  border-color: #6f9b7c;
+  color: #f2f5f1;
+}
+
+button.tab.ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.compat-bar {
+  font-size: 0.82rem;
+  color: #9a958c;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.compat-bar.warn {
+  color: #e8c48a;
+  border-color: #8a6a2f;
+  background: rgba(80, 55, 10, 0.35);
+}
+
+.shell-main {
+  margin-top: 0.25rem;
+}
+
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #6f9b7c;
+}
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+}
+
+.modal-card {
+  width: min(420px, 100%);
+  background: #1e2621;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 1.25rem 1.35rem 1.4rem;
+  text-align: center;
+}
+
+.about-logo {
+  border-radius: 50%;
+  border: 2px solid #6f9b7c;
+}
+
+.about-disclaimer {
+  font-size: 0.9rem;
+  color: #b7b3ab;
+  text-align: left;
+}
+
+a.button-link {
+  display: inline-block;
+  border: 1px solid #6f9b7c;
+  background: #2a4736;
+  color: #f2f5f1;
+  border-radius: 6px;
+  padding: 0.45rem 0.85rem;
+  text-decoration: none;
+}
+
+.pending-bar {
+  border-color: rgba(111, 155, 124, 0.45);
 }
 
 .panel {
@@ -73,6 +193,7 @@ select {
 }
 
 input[type="text"],
+input[type="password"],
 input:not([type]),
 input[type="search"] {
   border: 1px solid #6f9b7c;
