@@ -6,7 +6,11 @@ Windows-first Steam library organizer (spiritual successor to Depressurizer).
 ## Status
 
 - `steam-core`: platform detect, collections (JSON/LevelDB stores), backup, safe export, AutoCat dry-run
-- Desktop UI: Tauri 2 + React — **demo session** (fixtures → `%AppData%/Shelfmark/demo`). Live Steam LevelDB write is not wired yet; export still **refuses while Steam is running**.
+- Desktop UI: Tauri 2 + React
+  - **Demo session**: fixtures → `%AppData%/Shelfmark/demo`
+  - **Live session**: reads/writes `{Steam}/userdata/<id>/config/cloudstorage/cloud-storage-namespace-1.json`
+  - Export **refuses while Steam is running**; backups under `%AppData%/Shelfmark/backups`
+  - Live AutoCat metadata enrichment still TBD (Genre dry-run will mostly skip)
 
 ## Develop
 
