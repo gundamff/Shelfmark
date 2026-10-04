@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Locale, MessageKey } from "../i18n";
 
 type I18nStr = { en: string; zh: string };
+type Conflict = "skip" | "merge" | "replace";
 type RulePack = {
   id: string;
   name: I18nStr;
@@ -10,7 +11,7 @@ type RulePack = {
   recommended: boolean;
   needs_metadata: boolean;
   needs_achievements: boolean;
-  default_conflict: "skip" | "merge" | "replace";
+  default_conflict: Conflict;
 };
 
 type AutoCatSummary = {
@@ -25,6 +26,7 @@ type Props = {
   locale: Locale;
   metaCoverage: number | null;
   gameCount: number;
+  selectedUser: string;
   onClose: () => void;
   onQueued: () => void;
   t: (key: MessageKey, params?: Record<string, string | number>) => string;
@@ -39,15 +41,18 @@ export function AutocatWizard({
   locale,
   metaCoverage,
   gameCount,
+  selectedUser,
   onClose,
   onQueued,
   t,
 }: Props) {
   const [packs, setPacks] = useState<RulePack[]>([]);
   const [selected, setSelected] = useState<string>("");
+  const [conflict, setConflict] = useState<Conflict>("merge");
   const [preview, setPreview] = useState<AutoCatSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [achNote, setAchNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -56,6 +61,7 @@ export function AutocatWizard({
         setPacks(list);
         const rec = list.find((p) => p.recommended) ?? list[0];
         setSelected(rec?.id ?? "");
+        setConflict(rec?.default_conflict ?? "merge");
       })
       .catch((e) => setError(String(e)));
   }, [open]);
@@ -75,7 +81,7 @@ export function AutocatWizard({
         role="dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2>{t("dryRunGenre").replace("Genre", "AutoCat")}</h2>
+        <h2>AutoCat</h2>
         <p className="muted">{t("tagline")}</p>
         {error && <div className="banner error">{error}</div>}
         <label className="field">
@@ -83,29 +89,82 @@ export function AutocatWizard({
           <select
             value={selected}
             onChange={(e) => {
-              setSelected(e.target.value);
+              const id = e.target.value;
+              setSelected(id);
               setPreview(null);
+              const p = packs.find((x) => x.id === id);
+              if (p) setConflict(p.default_conflict);
             }}
           >
             {packs.map((p) => (
-              <option
-                key={p.id}
-                value={p.id}
-                disabled={p.needs_achievements}
-              >
+              <option key={p.id} value={p.id}>
                 {label(p.name, locale)}
                 {p.recommended ? " ★" : ""}
-                {p.needs_achievements ? " (needs achievements)" : ""}
+                {p.needs_achievements ? " 🏆" : ""}
               </option>
             ))}
           </select>
         </label>
-        {pack && (
-          <p className="muted">{label(pack.description, locale)}</p>
-        )}
+        {pack && <p className="muted">{label(pack.description, locale)}</p>}
+        <label className="field" style={{ marginTop: "0.75rem" }}>
+          <span>
+            {locale === "zh"
+              ? "覆盖策略"
+              : "Conflict policy"}
+          </span>
+          <select
+            value={conflict}
+            onChange={(e) => {
+              setConflict(e.target.value as Conflict);
+              setPreview(null);
+            }}
+          >
+            <option value="skip">
+              {locale === "zh" ? "跳过同名" : "Skip same-named"}
+            </option>
+            <option value="merge">
+              {locale === "zh" ? "合并追加" : "Merge / append"}
+            </option>
+            <option value="replace">
+              {locale === "zh" ? "替换成员" : "Replace members"}
+            </option>
+          </select>
+        </label>
         {metaLow && (
-          <p className="muted">{t("compatWarnOutside")} — metadata low; enrich in Settings.</p>
+          <p className="muted">
+            {locale === "zh"
+              ? "元数据覆盖偏低，请先到设置拉取。"
+              : "Metadata coverage is low — enrich in Settings first."}
+          </p>
         )}
+        {pack?.needs_achievements && (
+          <div className="row" style={{ marginTop: "0.5rem" }}>
+            <button
+              type="button"
+              disabled={busy || !selectedUser}
+              onClick={() => {
+                setBusy(true);
+                setError(null);
+                void invoke<{ fetched: number; failed: number; cached: number }>(
+                  "fetch_session_achievements",
+                  { userId3: selectedUser, maxApps: 40 },
+                )
+                  .then((r) =>
+                    setAchNote(
+                      locale === "zh"
+                        ? `成就：新拉取 ${r.fetched}，缓存 ${r.cached}，失败 ${r.failed}`
+                        : `Achievements: fetched ${r.fetched}, cached ${r.cached}, failed ${r.failed}`,
+                    ),
+                  )
+                  .catch((e) => setError(String(e)))
+                  .finally(() => setBusy(false));
+              }}
+            >
+              {locale === "zh" ? "拉取成就（40）" : "Fetch achievements (40)"}
+            </button>
+          </div>
+        )}
+        {achNote && <p className="muted">{achNote}</p>}
         <div className="row" style={{ marginTop: "0.75rem" }}>
           <button
             type="button"
@@ -113,7 +172,10 @@ export function AutocatWizard({
             onClick={() => {
               setBusy(true);
               setError(null);
-              void invoke<AutoCatSummary>("preview_rule_pack", { packId: selected })
+              void invoke<AutoCatSummary>("preview_rule_pack", {
+                packId: selected,
+                conflict,
+              })
                 .then(setPreview)
                 .catch((e) => setError(String(e)))
                 .finally(() => setBusy(false));

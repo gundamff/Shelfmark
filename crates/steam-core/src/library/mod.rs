@@ -1,7 +1,7 @@
 pub mod appinfo;
 pub mod live;
 
-pub use appinfo::metadata_from_local_steam;
+pub use appinfo::{load_metadata_from_appinfo, metadata_from_local_steam};
 
 use std::path::Path;
 
