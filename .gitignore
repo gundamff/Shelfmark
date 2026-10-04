@@ -1,0 +1,25 @@
+# Upstream reference clone (GPL-3.0 — do not vendor into this MIT tree)
+/reference/depressurizer/
+
+# Rust
+/target/
+**/target/
+Cargo.lock
+
+# Node / frontend
+/node_modules/
+/dist/
+/src-tauri/target/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vs/
+.idea/
+*.user
+*.suo
+
+# App local data accidentally copied into repo
+*.log
+.env
+.env.*

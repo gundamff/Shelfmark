@@ -1,8 +1,13 @@
 # Shelfmark Design Spec
 
 **Date:** 2026-10-04  
-**Status:** Awaiting user review  
+**Status:** Approved  
 **Working title:** Shelfmark (user may rename; paths and crate names follow the final name at bootstrap)
+
+## 0. Reference material
+
+Clone Depressurizer for **read-only** format/behavior research (GPL-3.0). See `reference/README.md`.  
+Do **not** copy upstream source into Shelfmark; reimplement clean-room under MIT.
 
 ## 1. Intent
 
