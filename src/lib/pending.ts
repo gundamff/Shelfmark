@@ -6,15 +6,24 @@ export type CollectionChangeset = {
   remove_members: unknown[];
 };
 
-export function formatPendingSummary(pending: CollectionChangeset): string {
-  const parts = [
-    `${pending.create.length} create`,
-    `${pending.rename.length} rename`,
-    `${pending.delete.length} delete`,
-    `${pending.add_members.length} add-ops`,
-    `${pending.remove_members.length} remove-ops`,
-  ];
-  return parts.join(" · ");
+export function formatPendingSummary(
+  pending: CollectionChangeset,
+  translate?: (
+    key: "pendingSummary",
+    params: Record<string, number>,
+  ) => string,
+): string {
+  const params = {
+    create: pending.create.length,
+    rename: pending.rename.length,
+    delete: pending.delete.length,
+    add: pending.add_members.length,
+    remove: pending.remove_members.length,
+  };
+  if (translate) {
+    return translate("pendingSummary", params);
+  }
+  return `${params.create} create · ${params.rename} rename · ${params.delete} delete · ${params.add} add-ops · ${params.remove} remove-ops`;
 }
 
 export function isPendingEmpty(pending: CollectionChangeset): boolean {

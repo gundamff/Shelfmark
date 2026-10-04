@@ -28,8 +28,8 @@ export default defineConfig(() => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // Ignore Rust outputs: Windows locks target/*.dll; Vite watch hits EBUSY.
+      ignored: ["**/src-tauri/**", "**/target/**"],
     },
   },
 }));

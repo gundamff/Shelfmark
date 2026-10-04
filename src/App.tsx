@@ -1,10 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   formatPendingSummary,
   isPendingEmpty,
   type CollectionChangeset,
 } from "./lib/pending";
+import {
+  localizeError,
+  parseLocalePreference,
+  resolveLocale,
+  t,
+  type LocalePreference,
+} from "./i18n";
 import "./App.css";
 
 type SteamInfo = {
@@ -41,6 +48,7 @@ type EnrichReport = {
 type AppConfig = {
   last_user_id3?: string | null;
   steam_path_override?: string | null;
+  locale?: string | null;
 };
 
 function App() {
@@ -60,18 +68,33 @@ function App() {
   const [gameQuery, setGameQuery] = useState("");
   const [metaCoverage, setMetaCoverage] = useState<number | null>(null);
   const [enrichReport, setEnrichReport] = useState<string | null>(null);
+  const [localePref, setLocalePref] = useState<LocalePreference>("system");
 
-  const run = useCallback(async (label: string, fn: () => Promise<void>) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await fn();
-    } catch (e) {
-      setError(`${label}: ${String(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const locale = useMemo(
+    () => resolveLocale(localePref, navigator.language),
+    [localePref],
+  );
+  const tr = useCallback(
+    (key: Parameters<typeof t>[1], params?: Record<string, string | number>) =>
+      t(locale, key, params),
+    [locale],
+  );
+
+  const run = useCallback(
+    async (label: string, fn: () => Promise<void>) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await fn();
+      } catch (e) {
+        const raw = `${label}: ${String(e)}`;
+        setError(localizeError(locale, raw));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [locale],
+  );
 
   const refreshLists = useCallback(async () => {
     const [g, c, p] = await Promise.all([
@@ -95,6 +118,7 @@ function App() {
         if (cfg.last_user_id3) {
           setSelectedUser(cfg.last_user_id3);
         }
+        setLocalePref(parseLocalePreference(cfg.locale));
       } catch {
         // ignore missing config
       }
@@ -123,21 +147,44 @@ function App() {
     }
   };
 
+  const onLocaleChange = (value: string) => {
+    const pref = parseLocalePreference(value);
+    setLocalePref(pref);
+    void run("save_locale", async () => {
+      await invoke("save_locale", { locale: pref });
+    });
+  };
+
   return (
     <main className="app">
       <header className="hero">
         <h1>Shelfmark</h1>
-        <p className="tagline">
-          Organize Steam collections. Demo writes AppData; live writes your Steam
-          cloud-storage catalog after you exit Steam.
-        </p>
+        <p className="tagline">{tr("tagline")}</p>
       </header>
+
+      <section className="panel">
+        <h2>{tr("settings")}</h2>
+        <div className="row">
+          <label className="field">
+            <span>{tr("language")}</span>
+            <select
+              value={localePref}
+              disabled={busy}
+              onChange={(e) => onLocaleChange(e.target.value)}
+            >
+              <option value="system">{tr("langSystem")}</option>
+              <option value="en">{tr("langEn")}</option>
+              <option value="zh">{tr("langZh")}</option>
+            </select>
+          </label>
+        </div>
+      </section>
 
       {error && <div className="banner error">{error}</div>}
       {exportMsg && <div className="banner ok">{exportMsg}</div>}
 
       <section className="panel">
-        <h2>Steam</h2>
+        <h2>{tr("steam")}</h2>
         <button
           disabled={busy}
           onClick={() =>
@@ -151,22 +198,22 @@ function App() {
             })
           }
         >
-          Detect Steam
+          {tr("detectSteam")}
         </button>
         {steam && (
           <dl className="kv">
-            <dt>Root</dt>
+            <dt>{tr("root")}</dt>
             <dd>{steam.root}</dd>
-            <dt>Users</dt>
-            <dd>{steam.users.join(", ") || "(none)"}</dd>
-            <dt>Running</dt>
-            <dd>{steam.steamRunning ? "yes — export will refuse" : "no"}</dd>
+            <dt>{tr("users")}</dt>
+            <dd>{steam.users.join(", ") || tr("none")}</dd>
+            <dt>{tr("running")}</dt>
+            <dd>{steam.steamRunning ? tr("runningYes") : tr("runningNo")}</dd>
           </dl>
         )}
       </section>
 
       <section className="panel">
-        <h2>Session</h2>
+        <h2>{tr("session")}</h2>
         <div className="row">
           <button
             disabled={busy}
@@ -183,7 +230,7 @@ function App() {
               })
             }
           >
-            Open demo session
+            {tr("openDemo")}
           </button>
           <select
             value={selectedUser}
@@ -214,18 +261,18 @@ function App() {
               })
             }
           >
-            Open live session
+            {tr("openLive")}
           </button>
         </div>
         {session && (
           <dl className="kv">
-            <dt>Mode</dt>
+            <dt>{tr("mode")}</dt>
             <dd>{session.mode}</dd>
-            <dt>Games / collections</dt>
+            <dt>{tr("gamesCollections")}</dt>
             <dd>
               {games.length} / {collections.length}
             </dd>
-            <dt>Store</dt>
+            <dt>{tr("store")}</dt>
             <dd className="path">{session.storePath}</dd>
           </dl>
         )}
@@ -234,11 +281,11 @@ function App() {
       {session && (
         <>
           <section className="panel">
-            <h2>Manual edit</h2>
+            <h2>{tr("manualEdit")}</h2>
             <div className="row">
               <input
                 value={newCollectionName}
-                placeholder="New collection name"
+                placeholder={tr("newCollectionPlaceholder")}
                 onChange={(e) => setNewCollectionName(e.target.value)}
               />
               <button
@@ -255,7 +302,7 @@ function App() {
                   })
                 }
               >
-                Create collection
+                {tr("createCollection")}
               </button>
             </div>
             <div className="row" style={{ marginTop: "0.75rem" }}>
@@ -284,7 +331,7 @@ function App() {
                   })
                 }
               >
-                Add selected
+                {tr("addSelected")}
               </button>
               <button
                 disabled={busy || !targetCollection || selectedGames.length === 0}
@@ -303,27 +350,31 @@ function App() {
                   })
                 }
               >
-                Remove selected
+                {tr("removeSelected")}
               </button>
             </div>
             <p className="muted">
-              Selected {selectedGames.length} game(s). Edits go to pending until
-              export.
+              {tr("selectedGamesHint", { count: selectedGames.length })}
             </p>
           </section>
 
           <section className="panel split">
             <div>
-              <h2>Games</h2>
+              <h2>{tr("games")}</h2>
               <input
                 value={gameQuery}
-                placeholder="Search name or app id"
+                placeholder={tr("searchPlaceholder")}
                 onChange={(e) => setGameQuery(e.target.value)}
                 style={{ marginBottom: "0.6rem", width: "100%" }}
               />
               <p className="muted">
-                Showing {filteredGames.length} / {games.length}
-                {metaCoverage != null ? ` · meta ${metaCoverage}` : ""}
+                {tr("gamesShowing", {
+                  shown: filteredGames.length,
+                  total: games.length,
+                })}
+                {metaCoverage != null
+                  ? tr("metaCount", { count: metaCoverage })
+                  : ""}
               </p>
               <ul className="checklist">
                 {filteredGames.map((g) => (
@@ -341,7 +392,7 @@ function App() {
               </ul>
             </div>
             <div>
-              <h2>Collections</h2>
+              <h2>{tr("collections")}</h2>
               <ul>
                 {collections.map((c) => (
                   <li key={c.id}>
@@ -352,7 +403,9 @@ function App() {
                     >
                       {c.name}
                     </button>{" "}
-                    <span className="muted">{c.app_ids.length} apps</span>
+                    <span className="muted">
+                      {tr("appsCount", { count: c.app_ids.length })}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -360,7 +413,7 @@ function App() {
           </section>
 
           <section className="panel">
-            <h2>Metadata + AutoCat</h2>
+            <h2>{tr("metadataAutocat")}</h2>
             <div className="row">
               <button
                 disabled={busy}
@@ -370,13 +423,18 @@ function App() {
                       maxFetch: 40,
                     });
                     setEnrichReport(
-                      `cache ${r.fromCache}, fetched ${r.fetched}, failed ${r.failed}, budget-skip ${r.skippedBudget}`,
+                      tr("enrichReport", {
+                        fromCache: r.fromCache,
+                        fetched: r.fetched,
+                        failed: r.failed,
+                        skippedBudget: r.skippedBudget,
+                      }),
                     );
                     await refreshMetaCoverage();
                   })
                 }
               >
-                Enrich metadata (40/batch)
+                {tr("enrichMetadata")}
               </button>
               <button
                 disabled={busy}
@@ -386,7 +444,7 @@ function App() {
                   })
                 }
               >
-                Dry-run Genre
+                {tr("dryRunGenre")}
               </button>
               <button
                 disabled={busy || !autocat}
@@ -399,27 +457,35 @@ function App() {
                   })
                 }
               >
-                Queue into pending
+                {tr("queuePending")}
               </button>
             </div>
-            {enrichReport && <p className="muted">Enrich: {enrichReport}</p>}
+            {enrichReport && <p className="muted">{enrichReport}</p>}
             {autocat && (
               <p className="muted">
-                matched {autocat.matchedGames}, skipped {autocat.skippedMissingMeta},
-                creates {autocat.createCount}, add-ops {autocat.addMemberOps}
+                {tr("autocatReport", {
+                  matched: autocat.matchedGames,
+                  skipped: autocat.skippedMissingMeta,
+                  creates: autocat.createCount,
+                  addOps: autocat.addMemberOps,
+                })}
               </p>
             )}
           </section>
 
           <section className="panel">
-            <h2>Pending</h2>
+            <h2>{tr("pending")}</h2>
             {pending ? (
               <>
-                <p>{formatPendingSummary(pending)}</p>
+                <p>
+                  {formatPendingSummary(pending, (key, params) =>
+                    tr(key, params),
+                  )}
+                </p>
                 <pre className="code">{JSON.stringify(pending, null, 2)}</pre>
               </>
             ) : (
-              <p className="muted">No pending loaded</p>
+              <p className="muted">{tr("noPending")}</p>
             )}
             <button
               disabled={busy || !pending || isPendingEmpty(pending)}
@@ -433,7 +499,7 @@ function App() {
                 })
               }
             >
-              Export (refuses if Steam running)
+              {tr("export")}
             </button>
           </section>
         </>

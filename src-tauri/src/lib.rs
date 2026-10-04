@@ -253,6 +253,17 @@ fn save_last_user(user_id3: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn save_locale(locale: String) -> Result<(), String> {
+    let normalized = match locale.as_str() {
+        "en" | "zh" | "system" => locale,
+        _ => "system".into(),
+    };
+    let mut cfg = AppConfig::load().map_err(map_err)?;
+    cfg.locale = Some(normalized);
+    cfg.save().map_err(map_err)
+}
+
+#[tauri::command]
 fn create_collection(
     name: String,
     state: tauri::State<'_, AppState>,
@@ -419,6 +430,7 @@ pub fn run() {
             pending_changeset,
             get_config,
             save_last_user,
+            save_locale,
             create_collection,
             add_games_to_collection,
             remove_games_from_collection,
