@@ -12,6 +12,7 @@
 - AutoCat strategies are **data-driven rule packs** (JSON) so users/AI can extend without rebuilding the app.
 - Metadata: **prefer local Steam caches**, fill gaps via Store API.
 - Achievements: **Steam Web API**; Key in config; SteamID from current session user.
+- **Supported Steam version is disclosed clearly** on startup / main shell (and repeated in About).
 
 ## Non-goals (this redesign cycle)
 
@@ -31,11 +32,17 @@
 - Top bar right: **About** (opens modal).
 - Optional one-line session chip: mode + user (so user is not lost outside Settings).
 - No session: Settings + About work; Collections shows empty state → “open a session in Settings”.
+- **Steam compatibility line (always visible on main shell):**  
+  - Declares the Steam client / data layout Shelfmark supports (human-readable, versioned with the app — e.g. Windows Steam using `cloud-storage-namespace-1.json`, tested against Steam package/build `X`).  
+  - After Detect Steam (or on launch if path known): show **detected** Steam version beside it.  
+  - If detected is outside the declared support window → warning style (still usable, but explicit).  
+  - Same text appears in the About modal.
 
 ### About modal (SaveSmith-like)
 
 - Logo, brand, short tagline  
 - Version from host (`CARGO_PKG_VERSION`)  
+- **Supported Steam version** (same declaration as shell) + detected version when available  
 - Short disclaimer (unofficial; exit Steam before export; use at own risk)  
 - GitHub link if configured; Close; Donate optional/hidden if unset  
 
@@ -172,10 +179,12 @@ UI progress aggregates both sources (“from local cache / from store / failed�
 | Brand | Shelfmark EN only for now; anime logo later |
 | Rule extension | JSON rule packs in AppData |
 | Metadata | Local Steam cache first, Store API fill |
+| Steam version UX | Always show supported range on shell + About; show detected when known; warn if outside support |
 
 ## Open implementation details (plan, not product ambiguity)
 
 - Exact SteamID3 → SteamID64 conversion method.  
 - First version of appinfo parser field coverage.  
 - Canonical rule-pack JSON schema field names.  
-- Logo asset production pipeline.
+- Logo asset production pipeline.  
+- Concrete initial “supported Steam” string and how to read FileVersion / package from install (plan pins one method).
