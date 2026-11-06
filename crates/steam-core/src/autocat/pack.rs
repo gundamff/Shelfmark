@@ -279,4 +279,19 @@ mod tests {
         assert!(p.needs_achievements);
         assert_eq!(p.to_preset().unwrap().rules.len(), 1);
     }
+
+    #[test]
+    fn loads_all_builtin_rule_packs() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../rule-packs");
+        let packs = load_rule_packs_from_dir(&dir).unwrap();
+        let ids: Vec<&str> = packs.iter().map(|p| p.id.as_str()).collect();
+        assert!(ids.contains(&"achievements-0"));
+        assert!(ids.contains(&"achievements-100"));
+        assert!(ids.contains(&"achievements-partial"));
+        for pack in packs.iter().filter(|p| p.id.starts_with("achievements-")) {
+            assert!(pack.needs_achievements);
+            assert_eq!(pack.rules.len(), 1);
+            pack.to_preset().unwrap();
+        }
+    }
 }

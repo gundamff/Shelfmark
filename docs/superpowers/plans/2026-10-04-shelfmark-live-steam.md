@@ -20,24 +20,24 @@
 
 ### Task 1: Steam catalog parse/load
 
-- [ ] `collections/steam_cloud_store.rs` load → `Vec<Collection>`
-- [ ] Fixture + tests
-- [ ] Commit
+- [x] `collections/steam_cloud_store.rs` load → `Vec<Collection>`
+- [x] Fixture + tests
+- [x] Commit
 
 ### Task 2: Steam catalog save
 
-- [ ] Save merges collections back into catalog JSON
-- [ ] Roundtrip test
-- [ ] Commit
+- [x] Save merges collections back into catalog JSON
+- [x] Roundtrip test
+- [x] Commit
 
 ### Task 3: Live library loader
 
-- [ ] `library/live.rs` — libraryfolders + appmanifest + union collection app ids
-- [ ] Tests with fixture tree
-- [ ] Commit
+- [x] `library/live.rs` — libraryfolders + appmanifest + union collection app ids
+- [x] Tests with fixture tree
+- [x] Commit
 
 ### Task 4: Tauri live session + UI
 
-- [ ] `open_live_session`, export uses real store path
-- [ ] UI: pick user + Open live session
-- [ ] Commit + merge
+- [x] `open_live_session`, export uses real store path
+- [x] UI: pick user + Open live session
+- [x] Commit + merge

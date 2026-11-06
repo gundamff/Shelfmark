@@ -28,7 +28,7 @@ pub use platform::{
     SUPPORTED_STEAM_LAYOUT, SUPPORTED_STEAM_NOTE,
 };
 pub use session::Session;
-pub use types::{AppId, Collection, CollectionChangeset, Game};
+pub use types::{AppId, ChangesetCounts, Collection, CollectionChangeset, Game};
 
 #[cfg(windows)]
 pub use platform::{WindowsSteamPlatform, DEFAULT_STEAM_PATH};

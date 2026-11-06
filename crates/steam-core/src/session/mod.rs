@@ -5,7 +5,7 @@ use crate::backup::BackupManager;
 use crate::collections::changeset::apply_changeset;
 use crate::collections::store::CollectionStore;
 use crate::platform::SteamPlatform;
-use crate::types::{AppId, Collection, CollectionChangeset, Game};
+use crate::types::{AppId, ChangesetCounts, Collection, CollectionChangeset, Game};
 use crate::{Error, Result};
 
 #[derive(Debug, Clone)]
@@ -42,15 +42,22 @@ impl Session {
         Ok(cols)
     }
 
-    /// Merge an AutoCat dry-run into pending (create / rename / delete / member ops).
-    pub fn queue_autocat(&mut self, result: AutoCatResult) {
-        self.pending.create.extend(result.changeset.create);
-        self.pending.rename.extend(result.changeset.rename);
-        self.pending.delete.extend(result.changeset.delete);
-        self.pending.add_members.extend(result.changeset.add_members);
-        self.pending
-            .remove_members
-            .extend(result.changeset.remove_members);
+    /// Counts the preview must show: the pending changeset exactly as it will
+    /// look after [`Session::queue_autocat`]. Uses the very same merge path as
+    /// queueing, so preview numbers equal queue numbers by construction.
+    pub fn preview_autocat(&self, result: &AutoCatResult) -> ChangesetCounts {
+        let mut pending = self.pending.clone();
+        merge_autocat_plan(&mut pending, &result.changeset);
+        pending.counts()
+    }
+
+    /// Merge an AutoCat dry-run into pending (create / rename / delete / member
+    /// ops), preserving any manual edits already queued. Re-applying the same
+    /// plan is idempotent, so clicking "加入待导出" twice cannot duplicate ops.
+    /// Returns the counts that now sit in the queue.
+    pub fn queue_autocat(&mut self, result: AutoCatResult) -> ChangesetCounts {
+        merge_autocat_plan(&mut self.pending, &result.changeset);
+        self.pending.counts()
     }
 
     pub fn create_collection(&mut self, name: impl Into<String>) -> Result<String> {
@@ -149,6 +156,36 @@ impl Session {
         store.save(&self.collections)?;
         self.pending = CollectionChangeset::default();
         Ok(())
+    }
+}
+
+/// The one place an AutoCat plan becomes queue contents. Both preview and
+/// queue go through this, which is what keeps their counts identical.
+fn merge_autocat_plan(pending: &mut CollectionChangeset, plan: &CollectionChangeset) {
+    for c in &plan.create {
+        if !pending.create.contains(c) {
+            pending.create.push(c.clone());
+        }
+    }
+    for op in &plan.rename {
+        if !pending.rename.contains(op) {
+            pending.rename.push(op.clone());
+        }
+    }
+    for id in &plan.delete {
+        if !pending.delete.contains(id) {
+            pending.delete.push(id.clone());
+        }
+    }
+    for op in &plan.add_members {
+        if !pending.add_members.contains(op) {
+            pending.add_members.push(op.clone());
+        }
+    }
+    for op in &plan.remove_members {
+        if !pending.remove_members.contains(op) {
+            pending.remove_members.push(op.clone());
+        }
     }
 }
 

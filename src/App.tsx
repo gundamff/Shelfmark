@@ -28,6 +28,9 @@ type AutoCatSummary = {
   skippedMissingMeta: number;
   createCount: number;
   addMemberOps: number;
+  renameCount: number;
+  deleteCount: number;
+  removeMemberOps: number;
 };
 
 type AppConfig = {

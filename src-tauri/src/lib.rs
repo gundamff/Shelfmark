@@ -73,6 +73,9 @@ struct AutoCatSummary {
     skipped_missing_meta: u32,
     create_count: usize,
     add_member_ops: usize,
+    rename_count: usize,
+    delete_count: usize,
+    remove_member_ops: usize,
 }
 
 fn map_err(e: steam_core::Error) -> String {
@@ -125,20 +128,29 @@ fn preview_rule_pack(
     let preset = pack.to_preset().map_err(map_err)?;
     let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
     let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
+    // Plan against the collections as they would look once pending is applied,
+    // otherwise the preview would re-create collections already in the queue.
+    let existing = bundle.session.effective_collections().map_err(map_err)?;
     let result = run_preset_with_options(
         &bundle.session.games,
         &bundle.meta,
         &bundle.achievements,
-        &bundle.session.collections,
+        &existing,
         &preset,
         policy,
     )
     .map_err(map_err)?;
+    // The preview is derived from the exact merge that queue_last_autocat
+    // performs, so the numbers shown here are the numbers that get queued.
+    let counts = bundle.session.preview_autocat(&result);
     let summary = AutoCatSummary {
         matched_games: result.matched_games,
         skipped_missing_meta: result.skipped_missing_meta,
-        create_count: result.changeset.create.len(),
-        add_member_ops: result.changeset.add_members.len(),
+        create_count: counts.create,
+        add_member_ops: counts.add_members,
+        rename_count: counts.rename,
+        delete_count: counts.delete,
+        remove_member_ops: counts.remove_members,
     };
     bundle.last_autocat = Some(result);
     Ok(summary)
@@ -435,18 +447,18 @@ fn run_autocat_genre(state: tauri::State<'_, AppState>) -> Result<AutoCatSummary
             remove_existing: false,
         }],
     };
-    let result = run_preset(
-        &bundle.session.games,
-        &bundle.meta,
-        &bundle.session.collections,
-        &preset,
-    )
-    .map_err(map_err)?;
+    let existing = bundle.session.effective_collections().map_err(map_err)?;
+    let result = run_preset(&bundle.session.games, &bundle.meta, &existing, &preset)
+        .map_err(map_err)?;
+    let counts = bundle.session.preview_autocat(&result);
     let summary = AutoCatSummary {
         matched_games: result.matched_games,
         skipped_missing_meta: result.skipped_missing_meta,
-        create_count: result.changeset.create.len(),
-        add_member_ops: result.changeset.add_members.len(),
+        create_count: counts.create,
+        add_member_ops: counts.add_members,
+        rename_count: counts.rename,
+        delete_count: counts.delete,
+        remove_member_ops: counts.remove_members,
     };
     bundle.last_autocat = Some(result);
     Ok(summary)
@@ -629,11 +641,14 @@ fn metadata_coverage(state: tauri::State<'_, AppState>) -> Result<u32, String> {
 fn queue_last_autocat(state: tauri::State<'_, AppState>) -> Result<CollectionChangeset, String> {
     let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
     let bundle = guard.as_mut().ok_or_else(|| "no session open".to_string())?;
+    // Keep the plan available. Consuming it with `take()` used to leave later
+    // "加入待导出" clicks with nothing to queue; merging is idempotent, so a
+    // repeat click cannot duplicate operations either.
     let result = bundle
         .last_autocat
-        .take()
+        .clone()
         .ok_or_else(|| "run AutoCat first".to_string())?;
-    bundle.session.queue_autocat(result);
+    let _ = bundle.session.queue_autocat(result);
     Ok(bundle.session.pending.clone())
 }
 

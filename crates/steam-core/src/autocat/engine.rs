@@ -422,18 +422,26 @@ pub fn run_preset_with_options(
     let mut changeset = CollectionChangeset::default();
     changeset.delete.extend(deleted_ids);
 
+    // The changeset is the single source of truth for both the preview and the
+    // export queue. A created collection carries its members *and* emits the
+    // matching add_members op, so matched games always show up as add ops.
+    // Collections that ended up with no members are dropped instead of being
+    // created empty (e.g. a Manual rule naming a collection with no games).
     for id in &created_ids {
-        if let Some((name, members)) = by_id.get(id) {
-            changeset.create.push(Collection {
-                id: id.clone(),
-                name: name.clone(),
-                app_ids: {
-                    let mut v: Vec<AppId> = members.iter().copied().collect();
-                    v.sort_unstable();
-                    v
-                },
-            });
+        let Some((name, members)) = by_id.get(id) else {
+            continue;
+        };
+        if members.is_empty() {
+            continue;
         }
+        let mut app_ids: Vec<AppId> = members.iter().copied().collect();
+        app_ids.sort_unstable();
+        changeset.add_members.push((id.clone(), app_ids.clone()));
+        changeset.create.push(Collection {
+            id: id.clone(),
+            name: name.clone(),
+            app_ids,
+        });
     }
 
     for (id, (name, members)) in &by_id {
@@ -460,8 +468,6 @@ pub fn run_preset_with_options(
             changeset.remove_members.push((id.clone(), remove));
         }
     }
-
-    // For newly created collections, members are already in create[]; also emit add_members for clarity? Plan said create + add. Keeping members inside create is enough; engine also adds via create.app_ids.
 
     Ok(AutoCatResult {
         changeset,
@@ -705,6 +711,52 @@ mod tests {
             .create
             .iter()
             .any(|c| c.name == "ach_100%" && c.app_ids == vec![1]));
+    }
+
+    #[test]
+    fn achievements_none_and_partial_modes() {
+        use crate::autocat::policy::ConflictPolicy;
+        use crate::autocat::rules::AchievementMode;
+
+        let games = vec![game(1, "None"), game(2, "Partial"), game(3, "All")];
+        let meta = HashMap::new();
+        let mut ach = AchievementIndex::new();
+        ach.insert(1, 0.0);
+        ach.insert(2, 0.5);
+        ach.insert(3, 1.0);
+        let preset = AutoCatPreset {
+            name: "a".into(),
+            rules: vec![
+                AutoCatRule::Achievements {
+                    prefix: "none_".into(),
+                    mode: AchievementMode::NoneUnlocked,
+                },
+                AutoCatRule::Achievements {
+                    prefix: "part_".into(),
+                    mode: AchievementMode::Partial,
+                },
+            ],
+        };
+        let result = run_preset_with_options(
+            &games,
+            &meta,
+            &ach,
+            &[],
+            &preset,
+            ConflictPolicy::Merge,
+        )
+        .unwrap();
+        assert!(result
+            .changeset
+            .create
+            .iter()
+            .any(|c| c.name == "none_0%" && c.app_ids == vec![1]));
+        assert!(result
+            .changeset
+            .create
+            .iter()
+            .any(|c| c.name == "part_partial" && c.app_ids == vec![2]));
+        assert_eq!(result.matched_games, 2);
     }
 
     #[test]

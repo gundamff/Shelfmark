@@ -28,6 +28,10 @@ struct CatalogElement {
     is_deleted: bool,
     #[serde(default)]
     value: String,
+    /// Preserve catalog fields we do not understand (timestamps, conflict
+    /// metadata, future Steam additions) instead of dropping them on save.
+    #[serde(flatten)]
+    extra: serde_json::Map<String, Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -200,6 +204,7 @@ impl CollectionStore for SteamCloudCatalogStore {
                     version: Some("1".into()),
                     is_deleted: false,
                     value: value_s,
+                    extra: serde_json::Map::new(),
                 },
             ));
         }
@@ -256,5 +261,33 @@ mod tests {
         let indie = again.iter().find(|c| c.id == "c-indie").unwrap();
         assert!(indie.app_ids.contains(&440));
         assert!(indie.app_ids.contains(&220));
+    }
+
+    #[test]
+    fn save_preserves_unknown_catalog_fields_and_dynamic_entries() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("catalog.json");
+        std::fs::write(
+            &path,
+            r#"[
+  ["GameReleased", {"key": "GameReleased", "timestamp": 100, "value": "{\"apps\":[]}", "version": "1", "conflictResolutionMethod": "keep"}],
+  ["user-collections.dyn", {"key": "user-collections.dyn", "timestamp": 101, "value": "{\"id\":\"dyn\",\"name\":\"Dynamic\",\"added\":[],\"removed\":[],\"filterSpec\":{\"nFormatVersion\":1}}", "version": "1", "extraFlag": true}],
+  ["user-collections.c1", {"key": "user-collections.c1", "timestamp": 102, "value": "{\"id\":\"c1\",\"name\":\"One\",\"added\":[10],\"removed\":[]}", "version": "1"}]
+]"#,
+        )
+        .unwrap();
+        let store = SteamCloudCatalogStore::new(path.clone());
+        let mut cols = store.load().unwrap();
+        cols[0].app_ids.push(20);
+        store.save(&cols).unwrap();
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"conflictResolutionMethod\":\"keep\""));
+        assert!(raw.contains("\"extraFlag\":true"));
+        assert!(raw.contains("user-collections.dyn"));
+        assert!(raw.contains("filterSpec"));
+        let again = store.load().unwrap();
+        let c1 = again.iter().find(|c| c.id == "c1").unwrap();
+        assert_eq!(c1.app_ids, vec![10, 20]);
     }
 }
