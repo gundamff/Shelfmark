@@ -182,3 +182,62 @@ fn queued_changeset_reproduces_every_matched_member() {
     let indie = cols.iter().find(|c| c.name == "g_Indie").unwrap();
     assert_eq!(indie.app_ids, vec![220]);
 }
+
+/// End-to-end lock for the whole AutoCat pipeline: drive the exact
+/// `steam_core` call sequence that the Tauri `preview_rule_pack` ->
+/// `queue_last_autocat` commands use, then assert the preview totals equal the
+/// numbers serialized into the export queue. All counters come from the real
+/// `preview_autocat` / `queue_autocat` / `counts()` path, never from a
+/// re-implementation of the counting logic.
+#[test]
+fn preview_totals_match_export_queue_end_to_end() {
+    use steam_core::types::ChangesetCounts;
+
+    let (games, meta) = two_genre_games();
+    let mut session = Session::new(games, vec![], vec![]);
+
+    // `preview_rule_pack`: plan against collections with pending applied.
+    let existing = session.effective_collections().unwrap();
+    let result = run_preset_with_options(
+        &session.games,
+        &meta,
+        &AchievementIndex::new(),
+        &existing,
+        &genre_preset(),
+        ConflictPolicy::Merge,
+    )
+    .unwrap();
+    // The AutoCatSummary the UI prints is built from these counts.
+    let preview: ChangesetCounts = session.preview_autocat(&result);
+
+    // `queue_last_autocat`: merge the stored plan, then read back the pending
+    // changeset that `pending_changeset` returns and the UI stringifies.
+    let queued: ChangesetCounts = session.queue_autocat(result);
+    let queue_json = session.pending.clone();
+
+    // Consistency by construction, field by field, using the same numbers the
+    // UI's `formatPendingSummary` reads from the queue JSON (array lengths).
+    assert_eq!(preview, queued);
+    assert_eq!(preview, queue_json.counts());
+    assert_eq!(preview.create, queue_json.create.len());
+    assert_eq!(preview.rename, queue_json.rename.len());
+    assert_eq!(preview.delete, queue_json.delete.len());
+    assert_eq!(preview.add_members, queue_json.add_members.len());
+    assert_eq!(preview.remove_members, queue_json.remove_members.len());
+
+    // Regression lock for the measured symptom: the queue JSON must not be
+    // empty, matched games must surface as add ops, and no empty collection
+    // may be created.
+    assert!(preview.create > 0, "preview must report new collections");
+    assert!(
+        preview.add_members > 0,
+        "preview must report add-member ops; queue must not be all zeros"
+    );
+    for c in &queue_json.create {
+        assert!(
+            !c.app_ids.is_empty(),
+            "never create an empty collection: {}",
+            c.name
+        );
+    }
+}
