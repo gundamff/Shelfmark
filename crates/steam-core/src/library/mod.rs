@@ -1,7 +1,7 @@
 pub mod appinfo;
 pub mod live;
 
-pub use appinfo::{load_metadata_from_appinfo, metadata_from_local_steam};
+pub use appinfo::{load_metadata_from_appinfo, load_names_from_appinfo, metadata_from_local_steam};
 
 use std::path::Path;
 
@@ -10,7 +10,10 @@ use serde::Deserialize;
 use crate::types::Game;
 use crate::{Error, Result};
 
-pub use live::{load_installed_games, load_live_library, merge_library_with_app_ids};
+pub use live::{
+    load_installed_games, load_live_library, load_live_library_with_store_names,
+    merge_library_with_app_ids, merge_library_with_app_ids_and_names,
+};
 
 #[derive(Debug, Deserialize)]
 struct OwnedGameDto {

@@ -44,14 +44,34 @@ pub fn load_installed_games(steam_root: &Path) -> Result<Vec<Game>> {
 
 /// Union installed games with any app ids (e.g. from collections / localconfig).
 pub fn merge_library_with_app_ids(installed: Vec<Game>, extra_ids: &[AppId]) -> Vec<Game> {
+    merge_library_with_app_ids_and_names(
+        installed,
+        extra_ids,
+        &HashMap::new(),
+        &HashMap::new(),
+    )
+}
+
+/// Union installed games with extra ids, resolving display names via
+/// appinfo.vdf names, then store-cache names, then `App <id>`.
+pub fn merge_library_with_app_ids_and_names(
+    installed: Vec<Game>,
+    extra_ids: &[AppId],
+    appinfo_names: &HashMap<AppId, String>,
+    store_names: &HashMap<AppId, String>,
+) -> Vec<Game> {
     let mut by_id: HashMap<AppId, String> = installed
         .into_iter()
         .map(|g| (g.app_id, g.name))
         .collect();
     for id in extra_ids {
-        by_id
-            .entry(*id)
-            .or_insert_with(|| format!("App {id}"));
+        by_id.entry(*id).or_insert_with(|| {
+            appinfo_names
+                .get(id)
+                .or_else(|| store_names.get(id))
+                .cloned()
+                .unwrap_or_else(|| format!("App {id}"))
+        });
     }
     let mut games: Vec<Game> = by_id
         .into_iter()
@@ -67,13 +87,30 @@ pub fn load_live_library(
     user_id3: &str,
     collection_app_ids: &[AppId],
 ) -> Result<Vec<Game>> {
+    load_live_library_with_store_names(steam_root, user_id3, collection_app_ids, &HashMap::new())
+}
+
+/// Like [`load_live_library`], but accepts an optional store-metadata name cache.
+pub fn load_live_library_with_store_names(
+    steam_root: &Path,
+    user_id3: &str,
+    collection_app_ids: &[AppId],
+    store_names: &HashMap<AppId, String>,
+) -> Result<Vec<Game>> {
     let installed = load_installed_games(steam_root).unwrap_or_default();
     let mut extras: HashSet<AppId> = collection_app_ids.iter().copied().collect();
     if let Ok(ids) = localconfig_app_ids(steam_root, user_id3) {
         extras.extend(ids);
     }
     let extra_vec: Vec<AppId> = extras.into_iter().collect();
-    Ok(merge_library_with_app_ids(installed, &extra_vec))
+    let appinfo_names =
+        crate::library::appinfo::load_names_from_appinfo(steam_root, &extra_vec);
+    Ok(merge_library_with_app_ids_and_names(
+        installed,
+        &extra_vec,
+        &appinfo_names,
+        store_names,
+    ))
 }
 
 fn parse_library_folders(steam_root: &Path) -> Result<Vec<PathBuf>> {
@@ -287,5 +324,89 @@ mod tests {
         assert!(games
             .iter()
             .any(|g| g.app_id == 4000 && g.name == "App 4000"));
+    }
+
+    fn push_cstring(buf: &mut Vec<u8>, s: &str) {
+        buf.extend_from_slice(s.as_bytes());
+        buf.push(0);
+    }
+
+    fn synthetic_v40_appinfo(entries: &[(AppId, &str)]) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&0x0756_4428u32.to_le_bytes()); // magic v40
+        out.extend_from_slice(&1u32.to_le_bytes()); // universe
+        for (app_id, name) in entries {
+            let mut payload = Vec::new();
+            payload.push(0x00);
+            push_cstring(&mut payload, "common");
+            payload.push(0x01);
+            push_cstring(&mut payload, "name");
+            push_cstring(&mut payload, name);
+            payload.push(0x08);
+            payload.push(0x08);
+
+            let size = (60 + payload.len()) as u32;
+            out.extend_from_slice(&app_id.to_le_bytes());
+            out.extend_from_slice(&size.to_le_bytes());
+            out.extend_from_slice(&[0u8; 64]);
+            out.extend_from_slice(&payload);
+        }
+        out.extend_from_slice(&0u32.to_le_bytes());
+        out
+    }
+
+    #[test]
+    fn live_library_resolves_names_from_appinfo_with_fallbacks() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        // Installed manifest keeps its own name (priority 1).
+        write_manifest(&root.join("steamapps"), 220, "Half-Life 2");
+
+        let appcache = root.join("appcache");
+        std::fs::create_dir_all(&appcache).unwrap();
+        std::fs::write(
+            appcache.join("appinfo.vdf"),
+            synthetic_v40_appinfo(&[(440, "Team Fortress 2"), (570, "Dota 2")]),
+        )
+        .unwrap();
+
+        let mut store_names = HashMap::new();
+        store_names.insert(4000, "Garry's Mod".to_string()); // store cache fallback
+        store_names.insert(440, "Wrong TF2".to_string()); // appinfo wins over store
+
+        let games = load_live_library_with_store_names(
+            root,
+            "123456",
+            &[440, 570, 4000, 99999],
+            &store_names,
+        )
+        .unwrap();
+
+        let by_id: HashMap<AppId, &str> = games
+            .iter()
+            .map(|g| (g.app_id, g.name.as_str()))
+            .collect();
+        assert_eq!(by_id.get(&220), Some(&"Half-Life 2"));
+        assert_eq!(by_id.get(&440), Some(&"Team Fortress 2"));
+        assert_eq!(by_id.get(&570), Some(&"Dota 2"));
+        assert_eq!(by_id.get(&4000), Some(&"Garry's Mod"));
+        assert_eq!(by_id.get(&99999), Some(&"App 99999"));
+    }
+
+    #[test]
+    fn live_library_degrades_when_appinfo_missing_or_corrupt() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Missing appinfo.vdf
+        let games = load_live_library(root, "123456", &[7]).unwrap();
+        assert!(games.iter().any(|g| g.app_id == 7 && g.name == "App 7"));
+
+        // Corrupt appinfo.vdf must not break the session
+        let appcache = root.join("appcache");
+        std::fs::create_dir_all(&appcache).unwrap();
+        std::fs::write(appcache.join("appinfo.vdf"), b"not a real appinfo").unwrap();
+        let games = load_live_library(root, "123456", &[10]).unwrap();
+        assert!(games.iter().any(|g| g.app_id == 10 && g.name == "App 10"));
     }
 }
