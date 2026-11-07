@@ -8,36 +8,58 @@ use crate::types::AppId;
 
 const MAGIC_V40: u32 = 0x0756_4428;
 const MAGIC_V41: u32 = 0x0756_4429;
-const ENTRY_HEADER: usize = 68;
+/// v40: bytes from the `size` field (inclusive) to the start of the binary VDF payload.
+const ENTRY_HEADER_V40: usize = 68;
+/// v41: bytes from `appid` to the start of the binary VDF payload.
+const ENTRY_HEADER_V41: usize = 68;
 
 /// Load metadata for many apps from `steam_root/appcache/appinfo.vdf`.
+///
+/// Missing or unreadable files return an empty map. Parse failures on files
+/// larger than 1 MB are returned as errors so callers can surface "names
+/// unavailable" instead of silently rendering placeholder names.
 pub fn load_metadata_from_appinfo(
     steam_root: &Path,
     want: &[AppId],
-) -> HashMap<AppId, GameMetadata> {
+) -> Result<HashMap<AppId, GameMetadata>, String> {
     let path = steam_root.join("appcache").join("appinfo.vdf");
-    let Ok(bytes) = std::fs::read(&path) else {
-        return HashMap::new();
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => return Ok(HashMap::new()),
     };
-    parse_appinfo_metadata(&bytes, want).unwrap_or_default()
+    match parse_appinfo_metadata(&bytes, want) {
+        Ok(map) => Ok(map),
+        Err(e) if bytes.len() > 1_000_000 => Err(e),
+        Err(_) => Ok(HashMap::new()),
+    }
 }
 
-/// Best-effort single-app lookup.
+/// Best-effort single-app lookup. Parse/read failures degrade to `None`.
 pub fn metadata_from_local_steam(steam_root: &Path, app_id: AppId) -> Option<GameMetadata> {
-    load_metadata_from_appinfo(steam_root, &[app_id]).remove(&app_id)
+    load_metadata_from_appinfo(steam_root, &[app_id])
+        .ok()?
+        .remove(&app_id)
 }
 
 /// Load display names from `steam_root/appcache/appinfo.vdf`.
-/// Missing/corrupt files return an empty map.
+///
+/// Missing or unreadable files return an empty map. Parse failures on files
+/// larger than 1 MB are returned as errors so callers can surface "names
+/// unavailable" instead of silently rendering placeholder names.
 pub fn load_names_from_appinfo(
     steam_root: &Path,
     want: &[AppId],
-) -> HashMap<AppId, String> {
+) -> Result<HashMap<AppId, String>, String> {
     let path = steam_root.join("appcache").join("appinfo.vdf");
-    let Ok(bytes) = std::fs::read(&path) else {
-        return HashMap::new();
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => return Ok(HashMap::new()),
     };
-    parse_appinfo_names(&bytes, want).unwrap_or_default()
+    match parse_appinfo_names(&bytes, want) {
+        Ok(map) => Ok(map),
+        Err(e) if bytes.len() > 1_000_000 => Err(e),
+        Err(_) => Ok(HashMap::new()),
+    }
 }
 
 pub fn parse_appinfo_metadata(
@@ -89,58 +111,68 @@ fn for_each_wanted_entry(
                 if app_id == 0 {
                     break;
                 }
-                if offset + ENTRY_HEADER - 4 > data.len() {
+                if offset + ENTRY_HEADER_V40 - 4 > data.len() {
                     break;
                 }
                 let size = read_u32(data, offset)? as usize;
-                let entry_start = offset;
-                if entry_start + ENTRY_HEADER > data.len() {
+                let entry_start = offset; // size field position
+                if entry_start + ENTRY_HEADER_V40 > data.len() {
                     break;
                 }
                 let payload_len = size.saturating_sub(60);
-                let payload_off = entry_start + ENTRY_HEADER;
-                offset = payload_off + payload_len;
+                let payload_off = entry_start + ENTRY_HEADER_V40;
+                let next = payload_off.checked_add(payload_len).ok_or("v40 overflow")?;
+                offset = next;
                 if !want_set.is_empty() && !want_set.contains(&app_id) {
                     continue;
                 }
                 if payload_off + payload_len > data.len() {
-                    break;
+                    return Err("v40 entry payload OOB".into());
                 }
                 let payload = &data[payload_off..payload_off + payload_len];
                 visit(app_id, payload, None);
             }
         }
         MAGIC_V41 => {
+            // Header: magic(4) + universe(4) + string_table_offset(8)
             if data.len() < 16 {
                 return Err("appinfo v41 header truncated".into());
             }
             let table_off = read_u64(data, 8)? as usize;
+            if table_off < 16 || table_off > data.len() {
+                return Err(format!("appinfo v41 string table offset {table_off} OOB"));
+            }
             let strings = parse_string_table(data, table_off)?;
+            // Entry layout (from appid start, verified against real Steam appinfo.vdf):
+            //   appid(4) + size(4) + infoState(4) + lastUpdated(4) + picsToken(8)
+            //   + changeNumber(4) + sha1Text(20) + sha1Binary(20) + binaryVdf(size-60)
+            // Total stride = 8 + size. VDF payload starts at offset + 68.
             let mut offset = 16usize;
-            while offset + 4 <= data.len() && offset < table_off {
+            while offset + 8 <= table_off {
                 let app_id = read_u32(data, offset)?;
-                offset += 4;
                 if app_id == 0 {
                     break;
                 }
-                if offset + ENTRY_HEADER > data.len() {
-                    break;
+                let size = read_u32(data, offset + 4)? as usize;
+                let stride = 8usize.checked_add(size).ok_or("v41 stride overflow")?;
+                let next = offset
+                    .checked_add(stride)
+                    .ok_or("v41 entry overflow")?;
+                if next > table_off || next <= offset {
+                    return Err(format!(
+                        "v41 entry stride out of range: appid={app_id} offset={offset} size={size} next={next} table_off={table_off}"
+                    ));
                 }
-                let size = read_u32(data, offset)? as usize;
                 let payload_len = size.saturating_sub(60);
-                let payload_off = offset + ENTRY_HEADER;
-                offset = payload_off + payload_len;
-                if offset > table_off {
-                    break;
-                }
-                if !want_set.is_empty() && !want_set.contains(&app_id) {
-                    continue;
-                }
+                let payload_off = offset + ENTRY_HEADER_V41;
                 if payload_off + payload_len > data.len() {
-                    break;
+                    return Err(format!("v41 payload OOB for appid {app_id}"));
                 }
-                let payload = &data[payload_off..payload_off + payload_len];
-                visit(app_id, payload, Some(&strings));
+                if want_set.is_empty() || want_set.contains(&app_id) {
+                    let payload = &data[payload_off..payload_off + payload_len];
+                    visit(app_id, payload, Some(&strings));
+                }
+                offset = next;
             }
         }
         other => return Err(format!("unsupported appinfo magic {other:#x}")),
@@ -164,15 +196,26 @@ fn parse_string_table(data: &[u8], offset: usize) -> Result<Vec<String>, String>
     Ok(strings)
 }
 
+fn common_map<'a>(root: &'a HashMap<String, Object>) -> Option<&'a HashMap<String, Object>> {
+    let container = root.get("common").or_else(|| {
+        root.get("appinfo").and_then(|o| match o {
+            Object::Map(m) => m.get("common"),
+            _ => None,
+        })
+    })?;
+    match container {
+        Object::Map(m) => Some(m),
+        _ => None,
+    }
+}
+
 fn name_from_binary_vdf(payload: &[u8], strings: Option<&[String]>) -> Option<String> {
     let root = parse_binary_object(payload, 0, strings).ok()?.0;
-    let common = root.get("common")?;
-    let Object::Map(map) = common else {
-        return None;
-    };
+    let map = common_map(&root)?;
     map.get("name")
         .and_then(object_as_str)
-        .map(|s| s.to_string())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn metadata_from_binary_vdf(
@@ -180,10 +223,7 @@ fn metadata_from_binary_vdf(
     strings: Option<&[String]>,
 ) -> Option<GameMetadata> {
     let root = parse_binary_object(payload, 0, strings).ok()?.0;
-    let common = root.get("common")?;
-    let Object::Map(map) = common else {
-        return None;
-    };
+    let map = common_map(&root)?;
 
     let mut meta = GameMetadata::default();
 
@@ -427,9 +467,9 @@ mod tests {
 
     #[test]
     fn stub_empty_want_on_missing_file() {
-        let map = load_metadata_from_appinfo(Path::new("C:\\no-steam-shelfmark"), &[220]);
+        let map = load_metadata_from_appinfo(Path::new("C:\\no-steam-shelfmark"), &[220]).unwrap();
         assert!(map.is_empty());
-        let names = load_names_from_appinfo(Path::new("C:\\no-steam-shelfmark"), &[220]);
+        let names = load_names_from_appinfo(Path::new("C:\\no-steam-shelfmark"), &[220]).unwrap();
         assert!(names.is_empty());
     }
 
@@ -447,7 +487,7 @@ mod tests {
         if !path.is_file() {
             return;
         }
-        let map = load_metadata_from_appinfo(&steam, &[220, 10]);
+        let map = load_metadata_from_appinfo(&steam, &[220, 10]).unwrap();
         // At least one of the classic Valve apps should resolve with some fields.
         assert!(
             map.contains_key(&220) || map.contains_key(&10) || !map.is_empty() || true,

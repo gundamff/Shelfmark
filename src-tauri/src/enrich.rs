@@ -178,7 +178,7 @@ pub fn enrich_metadata_index_with_progress(
     let batch_cap = if batch_cap == 0 { 40 } else { batch_cap };
 
     let local_map = steam_root
-        .map(|root| load_metadata_from_appinfo(root, app_ids))
+        .map(|root| load_metadata_from_appinfo(root, app_ids).unwrap_or_default())
         .unwrap_or_default();
 
     let mut emit = |p: &steam_core::metadata::FetchProgress| {

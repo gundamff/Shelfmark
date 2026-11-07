@@ -103,8 +103,8 @@ pub fn load_live_library_with_store_names(
         extras.extend(ids);
     }
     let extra_vec: Vec<AppId> = extras.into_iter().collect();
-    let appinfo_names =
-        crate::library::appinfo::load_names_from_appinfo(steam_root, &extra_vec);
+    let appinfo_names = crate::library::appinfo::load_names_from_appinfo(steam_root, &extra_vec)
+        .unwrap_or_default();
     Ok(merge_library_with_app_ids_and_names(
         installed,
         &extra_vec,

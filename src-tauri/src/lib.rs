@@ -306,7 +306,7 @@ fn open_live_session(
         // Seed from disk cache + local appinfo; Store fill via enrich.
         let cache = MetaCache::load();
         let ids: Vec<_> = games.iter().map(|g| g.app_id).collect();
-        let local = steam_core::load_metadata_from_appinfo(&root, &ids);
+        let local = steam_core::load_metadata_from_appinfo(&root, &ids).unwrap_or_default();
         let mut meta = MetadataIndex::new();
         for g in &games {
             if let Some(m) = cache.apps.get(&g.app_id) {
