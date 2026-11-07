@@ -21,11 +21,15 @@ export function SteamCompatBar({ compat, t }: Props) {
       supportedSteamNote: view.supportedSteamNote || "…",
       detectedSteamVersion: view.detectedSteamVersion,
       steamWithinSupport: view.steamWithinSupport,
+      checkedExePath: view.checkedExePath,
+      detectionState: view.detectionState,
     },
     {
       supported: t("compatSupported"),
       detected: t("compatDetected"),
       unknown: t("compatUnknown"),
+      exeMissing: t("compatExeMissing"),
+      unreadable: t("compatUnreadable"),
       warnOutside: t("compatWarnOutside"),
     },
   );

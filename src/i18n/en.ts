@@ -56,6 +56,8 @@ export const en: Messages = {
   compatSupported: "Supported Steam",
   compatDetected: "Detected",
   compatUnknown: "version not detected yet — use Detect Steam",
+  compatExeMissing: "steam.exe not found at {path}",
+  compatUnreadable: "version unreadable at {path}",
   compatWarnOutside: "outside current support window — proceed with care",
   aboutTitle: "About Shelfmark",
   aboutVersion: "Version {version}",

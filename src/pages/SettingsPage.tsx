@@ -8,6 +8,8 @@ export type SteamInfo = {
   supportedSteamNote: string;
   detectedSteamVersion: string | null;
   steamWithinSupport: boolean | null;
+  checkedExePath?: string | null;
+  detectionState?: "not_probed" | "ok" | "exe_missing" | "unreadable" | null;
 };
 
 export type SessionSummary = {

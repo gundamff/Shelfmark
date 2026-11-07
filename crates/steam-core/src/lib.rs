@@ -25,8 +25,8 @@ pub use config::AppConfig;
 pub use error::{Error, Result};
 pub use library::{load_live_library, load_metadata_from_appinfo, load_owned_games, metadata_from_local_steam};
 pub use platform::{
-    probe_steam_version, MockSteamPlatform, SteamCompatInfo, SteamPlatform,
-    SUPPORTED_STEAM_LAYOUT, SUPPORTED_STEAM_NOTE,
+    format_file_version, probe_steam_version, MockSteamPlatform, SteamCompatInfo, SteamPlatform,
+    VersionDetectionState, SUPPORTED_STEAM_LAYOUT, SUPPORTED_STEAM_NOTE,
 };
 pub use session::Session;
 pub use types::{AppId, ChangesetCounts, Collection, CollectionChangeset, Game};

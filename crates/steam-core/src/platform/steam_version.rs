@@ -12,6 +12,20 @@ pub const SUPPORTED_STEAM_NOTE: &str = "tested with steam.exe FileVersion 10.x (
 /// Major FileVersion family considered in-support when detection works.
 pub const SUPPORTED_FILEVERSION_MAJOR: u32 = 10;
 
+/// Why a version probe did or did not produce a version string.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VersionDetectionState {
+    /// No Steam root was provided, so nothing was checked.
+    NotProbed,
+    /// A FileVersion was read successfully.
+    Ok,
+    /// `steam.exe` was not found at the checked path.
+    ExeMissing,
+    /// `steam.exe` exists but its version resource could not be read.
+    Unreadable,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SteamCompatInfo {
@@ -19,19 +33,36 @@ pub struct SteamCompatInfo {
     pub supported_note: String,
     pub detected_version: Option<String>,
     pub within_support: Option<bool>,
+    /// Absolute-ish path to the `steam.exe` that was checked, when a root was known.
+    pub checked_exe_path: Option<String>,
+    pub detection_state: VersionDetectionState,
 }
 
 impl SteamCompatInfo {
     pub fn probe(steam_root: &Path) -> Self {
-        let detected_version = probe_steam_version(steam_root);
-        let within_support = detected_version
-            .as_deref()
-            .map(version_within_support);
+        let exe = steam_root.join("steam.exe");
+        let checked_exe_path = Some(exe.display().to_string());
+        let (detected_version, detection_state) = probe_steam_version_detailed(steam_root);
+        let within_support = detected_version.as_deref().map(version_within_support);
         Self {
             supported_label: SUPPORTED_STEAM_LAYOUT.to_string(),
             supported_note: SUPPORTED_STEAM_NOTE.to_string(),
             detected_version,
             within_support,
+            checked_exe_path,
+            detection_state,
+        }
+    }
+
+    /// Placeholder used before any Steam root has been detected.
+    pub fn not_probed() -> Self {
+        Self {
+            supported_label: SUPPORTED_STEAM_LAYOUT.to_string(),
+            supported_note: SUPPORTED_STEAM_NOTE.to_string(),
+            detected_version: None,
+            within_support: None,
+            checked_exe_path: None,
+            detection_state: VersionDetectionState::NotProbed,
         }
     }
 }
@@ -47,20 +78,36 @@ fn parse_major(file_version: &str) -> Option<u32> {
         .and_then(|s| s.parse().ok())
 }
 
+/// Format a PE `VS_FIXEDFILEINFO` file version (MS/LS DWORDs) as `major.minor.build.rev`.
+pub fn format_file_version(file_version_ms: u32, file_version_ls: u32) -> String {
+    let major = (file_version_ms >> 16) & 0xffff;
+    let minor = file_version_ms & 0xffff;
+    let build = (file_version_ls >> 16) & 0xffff;
+    let rev = file_version_ls & 0xffff;
+    format!("{major}.{minor}.{build}.{rev}")
+}
+
 /// Read `steam.exe` FileVersion (Windows PE version resource).
 pub fn probe_steam_version(steam_root: &Path) -> Option<String> {
+    probe_steam_version_detailed(steam_root).0
+}
+
+fn probe_steam_version_detailed(steam_root: &Path) -> (Option<String>, VersionDetectionState) {
     let exe = steam_root.join("steam.exe");
     if !exe.is_file() {
-        return None;
+        return (None, VersionDetectionState::ExeMissing);
     }
     #[cfg(windows)]
     {
-        return read_pe_file_version(&exe);
+        match read_pe_file_version(&exe) {
+            Some(v) => (Some(v), VersionDetectionState::Ok),
+            None => (None, VersionDetectionState::Unreadable),
+        }
     }
     #[cfg(not(windows))]
     {
         let _ = exe;
-        None
+        (None, VersionDetectionState::Unreadable)
     }
 }
 
@@ -132,11 +179,7 @@ fn read_pe_file_version(path: &Path) -> Option<String> {
         if info.signature != 0xFEEF04BD {
             return None;
         }
-        let major = (info.file_version_ms >> 16) & 0xffff;
-        let minor = info.file_version_ms & 0xffff;
-        let build = (info.file_version_ls >> 16) & 0xffff;
-        let rev = info.file_version_ls & 0xffff;
-        Some(format!("{major}.{minor}.{build}.{rev}"))
+        Some(format_file_version(info.file_version_ms, info.file_version_ls))
     }
 }
 
@@ -152,13 +195,38 @@ mod tests {
     }
 
     #[test]
-    fn probe_missing_root_is_none() {
-        assert!(probe_steam_version(Path::new("C:\\no-such-steam-shelfmark")).is_none());
+    fn probe_missing_root_reports_exe_missing() {
+        let root = Path::new("C:\\no-such-steam-shelfmark");
+        assert!(probe_steam_version(root).is_none());
+        let compat = SteamCompatInfo::probe(root);
+        assert_eq!(compat.detected_version, None);
+        assert_eq!(compat.detection_state, VersionDetectionState::ExeMissing);
+        assert!(compat
+            .checked_exe_path
+            .as_deref()
+            .unwrap_or_default()
+            .ends_with("steam.exe"));
     }
 
     #[test]
     fn major_10_is_within_support() {
         assert!(version_within_support("10.96.30.42"));
         assert!(!version_within_support("9.0.0.0"));
+    }
+
+    #[test]
+    fn parses_file_version_fields_from_fixture() {
+        // 10.96.30.42 => ms = (10<<16)|96, ls = (30<<16)|42
+        let ms = (10u32 << 16) | 96;
+        let ls = (30u32 << 16) | 42;
+        assert_eq!(format_file_version(ms, ls), "10.96.30.42");
+    }
+
+    #[test]
+    fn not_probed_state_has_no_checked_path() {
+        let c = SteamCompatInfo::not_probed();
+        assert_eq!(c.detection_state, VersionDetectionState::NotProbed);
+        assert_eq!(c.checked_exe_path, None);
+        assert_eq!(c.detected_version, None);
     }
 }

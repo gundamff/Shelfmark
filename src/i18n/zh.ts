@@ -55,6 +55,8 @@ export const zh: Messages = {
   compatSupported: "支持的 Steam",
   compatDetected: "本机版本",
   compatUnknown: "尚未检测版本 — 请先「检测 Steam」",
+  compatExeMissing: "未在 {path} 找到 steam.exe",
+  compatUnreadable: "无法读取版本信息：{path}",
   compatWarnOutside: "可能超出当前支持范围 — 请谨慎操作",
   aboutTitle: "关于 Shelfmark",
   aboutVersion: "版本 {version}",

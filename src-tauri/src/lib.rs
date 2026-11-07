@@ -55,6 +55,8 @@ struct SteamInfo {
     supported_steam_note: String,
     detected_steam_version: Option<String>,
     steam_within_support: Option<bool>,
+    checked_exe_path: Option<String>,
+    detection_state: steam_core::VersionDetectionState,
 }
 
 #[derive(Debug, Serialize)]
@@ -173,6 +175,8 @@ fn detect_steam() -> Result<SteamInfo, String> {
             supported_steam_note: compat.supported_note,
             detected_steam_version: compat.detected_version,
             steam_within_support: compat.within_support,
+            checked_exe_path: compat.checked_exe_path,
+            detection_state: compat.detection_state,
         });
     }
     #[cfg(not(windows))]
@@ -185,12 +189,7 @@ fn detect_steam() -> Result<SteamInfo, String> {
 fn steam_compat(steam_root: Option<String>) -> SteamCompatInfo {
     match steam_root {
         Some(root) if !root.is_empty() => SteamCompatInfo::probe(PathBuf::from(root).as_path()),
-        _ => SteamCompatInfo {
-            supported_label: steam_core::SUPPORTED_STEAM_LAYOUT.to_string(),
-            supported_note: steam_core::SUPPORTED_STEAM_NOTE.to_string(),
-            detected_version: None,
-            within_support: None,
-        },
+        _ => SteamCompatInfo::not_probed(),
     }
 }
 

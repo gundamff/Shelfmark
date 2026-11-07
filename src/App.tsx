@@ -130,12 +130,16 @@ function App() {
           supportedNote: string;
           detectedVersion: string | null;
           withinSupport: boolean | null;
+          checkedExePath: string | null;
+          detectionState: "not_probed" | "ok" | "exe_missing" | "unreadable";
         }>("steam_compat", { steamRoot: null });
         setCompat({
           supportedSteam: c.supportedLabel,
           supportedSteamNote: c.supportedNote,
           detectedSteamVersion: c.detectedVersion,
           steamWithinSupport: c.withinSupport,
+          checkedExePath: c.checkedExePath,
+          detectionState: c.detectionState,
         });
       } catch {
         // ignore
@@ -232,6 +236,8 @@ function App() {
                   supportedSteamNote: info.supportedSteamNote,
                   detectedSteamVersion: info.detectedSteamVersion,
                   steamWithinSupport: info.steamWithinSupport,
+                  checkedExePath: info.checkedExePath,
+                  detectionState: info.detectionState,
                 });
                 setSelectedUser((prev) => {
                   if (prev && info.users.includes(prev)) return prev;

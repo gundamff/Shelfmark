@@ -52,6 +52,8 @@ export type MessageKey =
   | "compatSupported"
   | "compatDetected"
   | "compatUnknown"
+  | "compatExeMissing"
+  | "compatUnreadable"
   | "compatWarnOutside"
   | "aboutTitle"
   | "aboutVersion"
