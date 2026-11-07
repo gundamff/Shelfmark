@@ -3,17 +3,11 @@ import {
   isPendingEmpty,
   type CollectionChangeset,
 } from "../lib/pending";
+import type { AutoCatSummary } from "../lib/autocat";
 import type { MessageKey } from "../i18n";
 
 type Game = { app_id: number; name: string };
 type Collection = { id: string; name: string; app_ids: number[] };
-
-type AutoCatSummary = {
-  matchedGames: number;
-  skippedMissingMeta: number;
-  createCount: number;
-  addMemberOps: number;
-};
 
 type Props = {
   busy: boolean;

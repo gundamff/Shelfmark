@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Locale, MessageKey } from "../i18n";
+import type { AutoCatSummary } from "../lib/autocat";
+import type { CollectionChangeset } from "../lib/pending";
 
 type I18nStr = { en: string; zh: string };
 type Conflict = "skip" | "merge" | "replace";
@@ -14,21 +16,16 @@ type RulePack = {
   default_conflict: Conflict;
 };
 
-type AutoCatSummary = {
-  matchedGames: number;
-  skippedMissingMeta: number;
-  createCount: number;
-  addMemberOps: number;
-};
-
 type Props = {
   open: boolean;
   locale: Locale;
   metaCoverage: number | null;
   gameCount: number;
   selectedUser: string;
+  autocat: AutoCatSummary | null;
+  onPreview: (summary: AutoCatSummary | null) => void;
   onClose: () => void;
-  onQueued: () => void;
+  onQueued: (changeset: CollectionChangeset) => void;
   t: (key: MessageKey, params?: Record<string, string | number>) => string;
 };
 
@@ -42,6 +39,8 @@ export function AutocatWizard({
   metaCoverage,
   gameCount,
   selectedUser,
+  autocat,
+  onPreview,
   onClose,
   onQueued,
   t,
@@ -49,7 +48,6 @@ export function AutocatWizard({
   const [packs, setPacks] = useState<RulePack[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [conflict, setConflict] = useState<Conflict>("merge");
-  const [preview, setPreview] = useState<AutoCatSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [achNote, setAchNote] = useState<string | null>(null);
@@ -91,7 +89,7 @@ export function AutocatWizard({
             onChange={(e) => {
               const id = e.target.value;
               setSelected(id);
-              setPreview(null);
+              onPreview(null);
               const p = packs.find((x) => x.id === id);
               if (p) setConflict(p.default_conflict);
             }}
@@ -116,7 +114,7 @@ export function AutocatWizard({
             value={conflict}
             onChange={(e) => {
               setConflict(e.target.value as Conflict);
-              setPreview(null);
+              onPreview(null);
             }}
           >
             <option value="skip">
@@ -176,7 +174,7 @@ export function AutocatWizard({
                 packId: selected,
                 conflict,
               })
-                .then(setPreview)
+                .then((summary) => onPreview(summary))
                 .catch((e) => setError(String(e)))
                 .finally(() => setBusy(false));
             }}
@@ -185,12 +183,13 @@ export function AutocatWizard({
           </button>
           <button
             type="button"
-            disabled={busy || !preview}
+            disabled={busy || !autocat}
             onClick={() => {
               setBusy(true);
-              void invoke("queue_last_autocat")
-                .then(() => {
-                  onQueued();
+              setError(null);
+              void invoke<CollectionChangeset>("queue_last_autocat")
+                .then((changeset) => {
+                  onQueued(changeset);
                   onClose();
                 })
                 .catch((e) => setError(String(e)))
@@ -203,13 +202,13 @@ export function AutocatWizard({
             {t("aboutClose")}
           </button>
         </div>
-        {preview && (
+        {autocat && (
           <p className="muted" style={{ marginTop: "0.75rem" }}>
             {t("autocatReport", {
-              matched: preview.matchedGames,
-              skipped: preview.skippedMissingMeta,
-              creates: preview.createCount,
-              addOps: preview.addMemberOps,
+              matched: autocat.matchedGames,
+              skipped: autocat.skippedMissingMeta,
+              creates: autocat.createCount,
+              addOps: autocat.addMemberOps,
             })}
           </p>
         )}

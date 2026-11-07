@@ -10,6 +10,7 @@ import {
   t,
   type LocalePreference,
 } from "./i18n";
+import type { AutoCatSummary } from "./lib/autocat";
 import type { CollectionChangeset } from "./lib/pending";
 import type { SteamCompatView } from "./lib/steamCompat";
 import { CollectionsPage } from "./pages/CollectionsPage";
@@ -22,16 +23,6 @@ import "./App.css";
 
 type Game = { app_id: number; name: string };
 type Collection = { id: string; name: string; app_ids: number[] };
-
-type AutoCatSummary = {
-  matchedGames: number;
-  skippedMissingMeta: number;
-  createCount: number;
-  addMemberOps: number;
-  renameCount: number;
-  deleteCount: number;
-  removeMemberOps: number;
-};
 
 type AppConfig = {
   last_user_id3?: string | null;
@@ -397,8 +388,11 @@ function App() {
         metaCoverage={metaCoverage}
         gameCount={games.length}
         selectedUser={selectedUser}
+        autocat={autocat}
+        onPreview={(summary) => setAutocat(summary)}
         onClose={() => setWizardOpen(false)}
-        onQueued={() => {
+        onQueued={(changeset) => {
+          setPending(changeset);
           void refreshLists();
         }}
         t={tr}
