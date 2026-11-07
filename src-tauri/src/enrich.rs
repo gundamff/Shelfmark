@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::Path;
 
+use steam_core::metadata::{run_fetch_loop, FetchStep};
 use steam_core::{load_metadata_from_appinfo, AppId, GameMetadata, MetadataIndex};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -126,11 +126,16 @@ pub fn fetch_appdetails(app_id: AppId) -> Result<Option<GameMetadata>, String> {
     let entry = body
         .get(app_id.to_string())
         .ok_or_else(|| format!("missing appdetails key for {app_id}"))?;
-    let success = entry.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
+    let success = entry
+        .get("success")
+        .and_then(|s| s.as_bool())
+        .unwrap_or(false);
     if !success {
         return Ok(None);
     }
-    let data = entry.get("data").ok_or_else(|| "missing data".to_string())?;
+    let data = entry
+        .get("data")
+        .ok_or_else(|| "missing data".to_string())?;
     Ok(metadata_from_appdetails_data(data))
 }
 
@@ -145,129 +150,118 @@ pub struct EnrichStatus {
     pub failed: u32,
     pub remaining: u32,
     pub stopped: bool,
+    pub current_app: Option<u32>,
+    pub last_error: Option<String>,
 }
 
 /// Enrich missing entries in `meta` for `app_ids`, using disk cache + store API.
+/// Loops in batches (capped by `batch_cap`) until covered or cancelled.
 pub fn enrich_metadata_index(
     meta: &mut MetadataIndex,
     app_ids: &[AppId],
-    max_fetch: usize,
+    batch_cap: usize,
     steam_root: Option<&Path>,
 ) -> Result<EnrichReport, String> {
-    enrich_metadata_index_with_progress(meta, app_ids, max_fetch, steam_root, None, None)
+    enrich_metadata_index_with_progress(meta, app_ids, batch_cap, steam_root, None, None)
 }
 
 pub fn enrich_metadata_index_with_progress(
     meta: &mut MetadataIndex,
     app_ids: &[AppId],
-    max_fetch: usize,
+    batch_cap: usize,
     steam_root: Option<&Path>,
     mut on_progress: Option<&mut dyn FnMut(&EnrichStatus)>,
     should_stop: Option<&dyn Fn() -> bool>,
 ) -> Result<EnrichReport, String> {
     let mut cache = MetaCache::load();
     let mut report = EnrichReport::default();
-    let total = app_ids.len() as u32;
-    let mut status = EnrichStatus {
-        running: true,
-        total,
-        done: 0,
-        from_local: 0,
-        from_store: 0,
-        failed: 0,
-        remaining: total,
-        stopped: false,
-    };
+    let batch_cap = if batch_cap == 0 { 40 } else { batch_cap };
 
     let local_map = steam_root
         .map(|root| load_metadata_from_appinfo(root, app_ids))
         .unwrap_or_default();
 
-    for &app_id in app_ids {
-        if should_stop.is_some_and(|f| f()) {
-            status.stopped = true;
-            status.running = false;
-            if let Some(cb) = on_progress.as_mut() {
-                cb(&status);
-            }
-            break;
-        }
-        if let Some(cached) = cache.apps.get(&app_id) {
-            if !cached.genres.is_empty() || cached.release_year.is_some() {
-                meta.insert(app_id, cached.clone());
-                report.from_cache += 1;
-                status.from_local += 1;
-                status.done += 1;
-                status.remaining = total.saturating_sub(status.done);
-                if let Some(cb) = on_progress.as_mut() {
-                    cb(&status);
-                }
-                continue;
-            }
-        }
-        if meta.get(&app_id).is_some_and(|m| !m.genres.is_empty()) {
-            report.already_present += 1;
-            status.done += 1;
-            status.remaining = total.saturating_sub(status.done);
-            if let Some(cb) = on_progress.as_mut() {
-                cb(&status);
-            }
-            continue;
-        }
-        if let Some(local) = local_map.get(&app_id) {
-            if !local.genres.is_empty() || local.release_year.is_some() {
-                cache.apps.insert(app_id, local.clone());
-                meta.insert(app_id, local.clone());
-                report.from_cache += 1;
-                status.from_local += 1;
-                status.done += 1;
-                status.remaining = total.saturating_sub(status.done);
-                if let Some(cb) = on_progress.as_mut() {
-                    cb(&status);
-                }
-                continue;
-            }
-        }
-        if report.fetched >= max_fetch as u32 {
-            report.skipped_budget += 1;
-            status.done += 1;
-            status.remaining = total.saturating_sub(status.done);
-            if let Some(cb) = on_progress.as_mut() {
-                cb(&status);
-            }
-            continue;
-        }
-
-        match fetch_appdetails(app_id) {
-            Ok(Some(m)) => {
-                cache.apps.insert(app_id, m.clone());
-                meta.insert(app_id, m);
-                report.fetched += 1;
-                status.from_store += 1;
-            }
-            Ok(None) => {
-                report.failed += 1;
-                status.failed += 1;
-            }
-            Err(_) => {
-                report.failed += 1;
-                status.failed += 1;
-            }
-        }
-        status.done += 1;
-        status.remaining = total.saturating_sub(status.done);
+    let mut emit = |p: &steam_core::metadata::FetchProgress| {
         if let Some(cb) = on_progress.as_mut() {
-            cb(&status);
+            cb(&EnrichStatus {
+                running: p.running,
+                total: p.total as u32,
+                done: p.done as u32,
+                from_local: p.cached as u32,
+                from_store: p.fetched as u32,
+                failed: p.failed as u32,
+                remaining: p.remaining() as u32,
+                stopped: p.cancelled,
+                current_app: p.current_app,
+                last_error: p.last_error.clone(),
+            });
         }
-        // Be polite to Steam Store.
-        thread::sleep(Duration::from_millis(300));
-    }
+    };
 
-    status.running = false;
-    if let Some(cb) = on_progress.as_mut() {
-        cb(&status);
-    }
+    let loop_report = run_fetch_loop(
+        app_ids,
+        batch_cap,
+        || should_stop.is_some_and(|f| f()),
+        |p| emit(p),
+        |app_id| {
+            if let Some(cached) = cache.apps.get(&app_id) {
+                if !cached.genres.is_empty() || cached.release_year.is_some() {
+                    meta.insert(app_id, cached.clone());
+                    report.from_cache += 1;
+                    return Ok(FetchStep::Cached);
+                }
+            }
+            if meta
+                .get(&app_id)
+                .is_some_and(|m| !m.genres.is_empty())
+            {
+                report.already_present += 1;
+                return Ok(FetchStep::AlreadyPresent);
+            }
+            if let Some(local) = local_map.get(&app_id) {
+                if !local.genres.is_empty() || local.release_year.is_some() {
+                    cache.apps.insert(app_id, local.clone());
+                    meta.insert(app_id, local.clone());
+                    report.from_cache += 1;
+                    return Ok(FetchStep::Cached);
+                }
+            }
+
+            match fetch_appdetails(app_id) {
+                Ok(Some(m)) => {
+                    cache.apps.insert(app_id, m.clone());
+                    meta.insert(app_id, m);
+                    report.fetched += 1;
+                    // Be polite to Steam Store.
+                    thread::sleep(Duration::from_millis(300));
+                    Ok(FetchStep::Fetched)
+                }
+                Ok(None) => {
+                    report.failed += 1;
+                    thread::sleep(Duration::from_millis(300));
+                    Ok(FetchStep::AppFailed)
+                }
+                Err(err) => {
+                    // Surface the real error text instead of stalling silently.
+                    Err(err)
+                }
+            }
+        },
+    );
+
+    // Keep the simple report fields in sync (loop report is authoritative for totals).
+    report.from_cache = loop_report.cached as u32;
+    report.fetched = loop_report.fetched as u32;
+    report.failed = loop_report.failed as u32;
+    report.already_present = loop_report.already_present as u32;
+    report.skipped_budget = 0;
+
+    // Always persist cache so cancellation/failures leave it consistent.
     let _ = cache.save();
+
+    if let Some(err) = loop_report.batch_error {
+        return Err(err);
+    }
     Ok(report)
 }
 

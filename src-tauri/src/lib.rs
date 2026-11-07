@@ -533,30 +533,48 @@ fn enrich_start(
             failed: 0,
             remaining: ids.len() as u32,
             stopped: false,
+            current_app: None,
+            last_error: None,
         };
     }
 
     thread::spawn(move || {
         let state = app.state::<AppState>();
-        let Ok(mut guard) = state.inner.lock() else {
-            return;
+        let result = {
+            let Ok(mut guard) = state.inner.lock() else {
+                if let Ok(mut slot) = state.enrich.lock() {
+                    slot.running = false;
+                    slot.last_error = Some("failed to lock session state".into());
+                }
+                return;
+            };
+            let Some(bundle) = guard.as_mut() else {
+                if let Ok(mut slot) = state.enrich.lock() {
+                    slot.running = false;
+                    slot.last_error = Some("no session open".into());
+                }
+                return;
+            };
+            let mut on_progress = |s: &EnrichStatus| {
+                if let Ok(mut slot) = state.enrich.lock() {
+                    *slot = s.clone();
+                }
+            };
+            enrich_metadata_index_with_progress(
+                &mut bundle.meta,
+                &ids,
+                budget,
+                steam_root.as_deref(),
+                Some(&mut on_progress),
+                Some(&|| state.enrich_stop.load(Ordering::SeqCst)),
+            )
         };
-        let Some(bundle) = guard.as_mut() else {
-            return;
-        };
-        let mut on_progress = |s: &EnrichStatus| {
+        if let Err(err) = result {
             if let Ok(mut slot) = state.enrich.lock() {
-                *slot = s.clone();
+                slot.running = false;
+                slot.last_error = Some(err);
             }
-        };
-        let _ = enrich_metadata_index_with_progress(
-            &mut bundle.meta,
-            &ids,
-            budget,
-            steam_root.as_deref(),
-            Some(&mut on_progress),
-            Some(&|| state.enrich_stop.load(Ordering::SeqCst)),
-        );
+        }
     });
 
     Ok(())

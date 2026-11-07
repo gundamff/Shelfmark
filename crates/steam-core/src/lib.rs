@@ -5,6 +5,7 @@ pub mod collections;
 pub mod config;
 pub mod error;
 pub mod library;
+pub mod metadata;
 pub mod platform;
 pub mod session;
 pub mod types;

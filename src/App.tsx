@@ -157,16 +157,25 @@ function App() {
             failed: number;
             remaining: number;
             stopped: boolean;
+            currentApp: number | null;
+            lastError: string | null;
           }>("enrich_status");
+          const current =
+            s.currentApp != null ? ` · app ${s.currentApp}` : "";
+          const err = s.lastError ? ` · error: ${s.lastError}` : "";
           setEnrichDetail(
-            `${s.done}/${s.total} · local ${s.fromLocal} · store ${s.fromStore} · fail ${s.failed} · left ${s.remaining}`,
+            `${s.done}/${s.total} · local ${s.fromLocal} · store ${s.fromStore} · fail ${s.failed} · left ${s.remaining}${current}${err}`,
           );
           if (!s.running) {
             setEnrichRunning(false);
+            if (s.lastError) {
+              setEnrichReport(`Error: ${s.lastError}`);
+            }
             await refreshMetaCoverage();
           }
-        } catch {
+        } catch (e) {
           setEnrichRunning(false);
+          setEnrichReport(`Error: ${String(e)}`);
         }
       })();
     }, 500);
@@ -264,6 +273,7 @@ function App() {
                 await invoke("enrich_start", { maxFetch: 40 });
                 setEnrichRunning(true);
                 setEnrichReport(null);
+                setEnrichDetail(null);
               })
             }
             onEnrichStop={() => {
