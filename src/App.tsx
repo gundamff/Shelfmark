@@ -364,8 +364,9 @@ function App() {
             }
             onExport={() =>
               run("export_session", async () => {
+                setExportMsg(null);
                 const msg = await invoke<string>("export_session");
-                setExportMsg(msg);
+                setExportMsg(msg?.trim() ? msg : tr("exportSuccess"));
                 setAutocat(null);
                 setSelectedGames([]);
                 await refreshLists();

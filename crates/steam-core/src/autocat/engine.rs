@@ -977,4 +977,67 @@ mod tests {
             assert_eq!(col.app_ids.len(), 2, "{expected} should hold both games");
         }
     }
+
+    #[test]
+    fn genre_remove_existing_deletes_duplicate_localisations_and_rebuilds_canonical() {
+        use crate::types::Collection;
+
+        let games = vec![game(1, "G1"), game(2, "G2")];
+        let mut meta = HashMap::new();
+        meta.insert(
+            1,
+            GameMetadata {
+                genres: vec!["动作".into()],
+                ..Default::default()
+            },
+        );
+        meta.insert(
+            2,
+            GameMetadata {
+                genres: vec!["Action".into()],
+                ..Default::default()
+            },
+        );
+        let existing = vec![
+            Collection {
+                id: "old-zh".into(),
+                name: "g_动作".into(),
+                app_ids: vec![1],
+            },
+            Collection {
+                id: "old-en".into(),
+                name: "g_Action".into(),
+                app_ids: vec![99],
+            },
+        ];
+        let preset = AutoCatPreset {
+            name: "g".into(),
+            rules: vec![AutoCatRule::Genre {
+                prefix: "g_".into(),
+                max_categories: 0,
+                remove_existing: true,
+            }],
+        };
+        let result = run_preset(&games, &meta, &existing, &preset).unwrap();
+        assert!(
+            result.changeset.delete.iter().any(|id| id == "old-zh"),
+            "expected g_动作 collection to be deleted: {:?}",
+            result.changeset.delete
+        );
+        assert!(
+            result.changeset.delete.iter().any(|id| id == "old-en"),
+            "expected g_Action collection to be deleted: {:?}",
+            result.changeset.delete
+        );
+        let action_creates: Vec<_> = result
+            .changeset
+            .create
+            .iter()
+            .filter(|c| c.name == "g_Action")
+            .collect();
+        assert_eq!(action_creates.len(), 1, "only one canonical g_Action should be rebuilt: {:?}", result.changeset.create);
+        assert!(!result.changeset.create.iter().any(|c| c.name == "g_动作"));
+        assert!(action_creates[0].app_ids.contains(&1));
+        assert!(action_creates[0].app_ids.contains(&2));
+    }
 }

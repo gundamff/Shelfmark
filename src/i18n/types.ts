@@ -48,6 +48,7 @@ export type MessageKey =
   | "pending"
   | "noPending"
   | "export"
+  | "exportSuccess"
   | "pendingSummary"
   | "compatSupported"
   | "compatDetected"

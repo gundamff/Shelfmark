@@ -9,5 +9,5 @@
   "needs_metadata": true,
   "needs_achievements": false,
   "default_conflict": "merge",
-  "rules": [{ "kind": "genre", "prefix": "g_", "max_categories": 0 }]
+  "rules": [{ "kind": "genre", "prefix": "g_", "max_categories": 0, "remove_existing": true }]
 }

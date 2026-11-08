@@ -50,6 +50,7 @@ export const zh: Messages = {
   pending: "待导出",
   noPending: "尚未加载待导出变更",
   export: "导出（Steam 运行中会拒绝）",
+  exportSuccess: "导出完成。",
   pendingSummary:
     "{create} 创建 · {rename} 重命名 · {delete} 删除 · {add} 添加 · {remove} 移除",
   compatSupported: "支持的 Steam",

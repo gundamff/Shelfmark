@@ -51,6 +51,7 @@ export const en: Messages = {
   pending: "Pending",
   noPending: "No pending loaded",
   export: "Export (refuses if Steam running)",
+  exportSuccess: "Export completed.",
   pendingSummary:
     "{create} create · {rename} rename · {delete} delete · {add} add-ops · {remove} remove-ops",
   compatSupported: "Supported Steam",
