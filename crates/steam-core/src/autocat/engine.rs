@@ -9,6 +9,48 @@ use crate::Result;
 /// app_id -> unlock ratio in \[0.0, 1.0\].
 pub type AchievementIndex = HashMap<AppId, f32>;
 
+/// Map a raw Steam genre string to one canonical spelling.
+///
+/// Metadata for the same title arrives either from the store API (English, e.g. "Action")
+/// or from older/localised caches (Chinese, e.g. "动作"), so without normalisation AutoCat
+/// creates two near-duplicate collections such as `g_Action` and `g_动作` — one of which
+/// ends up with a single member. Normalise to the English store spelling and fall back to
+/// the trimmed original for anything unknown, so no genre is silently dropped.
+pub fn canonical_genre(raw: &str) -> String {
+    let key = raw.trim().to_lowercase();
+    let canonical = match key.as_str() {
+        "action" | "动作" | "动作类" => "Action",
+        "adventure" | "冒险" => "Adventure",
+        "casual" | "休闲" => "Casual",
+        "indie" | "独立" | "独立游戏" => "Indie",
+        "massively multiplayer" | "mmo" | "大型多人在线" | "多人在线" => "Massively Multiplayer",
+        "racing" | "竞速" | "赛车" => "Racing",
+        "rpg" | "role-playing" | "role playing" | "角色扮演" => "RPG",
+        "simulation" | "模拟" => "Simulation",
+        "sports" | "体育" => "Sports",
+        "strategy" | "策略" => "Strategy",
+        "early access" | "抢先体验" => "Early Access",
+        "free to play" | "f2p" | "免费开玩" | "免费游玩" => "Free To Play",
+        "animation & modeling" | "animation and modeling" | "动画与建模" | "动画和建模" => {
+            "Animation & Modeling"
+        }
+        "audio production" | "音频制作" => "Audio Production",
+        "design & illustration" | "design and illustration" | "设计与插画" => "Design & Illustration",
+        "education" | "教育" => "Education",
+        "game development" | "游戏开发" => "Game Development",
+        "photo editing" | "照片编辑" => "Photo Editing",
+        "software training" | "软件培训" => "Software Training",
+        "utilities" | "工具" | "实用工具" => "Utilities",
+        "video production" | "视频制作" => "Video Production",
+        "web publishing" | "网络出版" => "Web Publishing",
+        "sexual content" | "性内容" => "Sexual Content",
+        "gore" | "violent" | "血腥" | "暴力" => "Gore",
+        _ => return raw.trim().to_string(),
+    };
+    canonical.to_string()
+}
+
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoCatResult {
     pub changeset: CollectionChangeset,
@@ -116,7 +158,7 @@ pub fn run_preset_with_options(
                         (*max_categories as usize).min(m.genres.len())
                     };
                     for genre in m.genres.iter().take(limit) {
-                        let col_name = format!("{prefix}{genre}");
+                        let col_name = format!("{prefix}{}", canonical_genre(genre));
                         let id = ensure_collection(
                             &col_name,
                             &mut by_id,
@@ -878,5 +920,61 @@ mod tests {
             .find(|c| c.name == "Keepers")
             .unwrap();
         assert_eq!(keepers.app_ids, vec![7]);
+    }
+
+    #[test]
+    fn canonical_genre_folds_localised_spellings() {
+        assert_eq!(canonical_genre("Action"), "Action");
+        assert_eq!(canonical_genre("动作"), "Action");
+        assert_eq!(canonical_genre("  动作 "), "Action");
+        assert_eq!(canonical_genre("RPG"), "RPG");
+        assert_eq!(canonical_genre("角色扮演"), "RPG");
+        assert_eq!(canonical_genre("Simulation"), "Simulation");
+        assert_eq!(canonical_genre("模拟"), "Simulation");
+        assert_eq!(canonical_genre("免费开玩"), "Free To Play");
+        assert_eq!(canonical_genre("大型多人在线"), "Massively Multiplayer");
+        // 未收录的取值原样保留，不能被丢掉
+        assert_eq!(canonical_genre("Something New"), "Something New");
+        assert_eq!(canonical_genre("  "), "");
+    }
+
+    #[test]
+    fn genre_rule_merges_duplicate_localisations() {
+        let games = vec![game(1, "Localised"), game(2, "English")];
+        let mut meta = HashMap::new();
+        meta.insert(
+            1,
+            GameMetadata {
+                genres: vec!["动作".into(), "模拟".into(), "免费开玩".into()],
+                ..Default::default()
+            },
+        );
+        meta.insert(
+            2,
+            GameMetadata {
+                genres: vec!["Action".into(), "Simulation".into(), "Free To Play".into()],
+                ..Default::default()
+            },
+        );
+        let preset = AutoCatPreset {
+            name: "g".into(),
+            rules: vec![AutoCatRule::Genre {
+                prefix: "g_".into(),
+                max_categories: 0,
+                remove_existing: false,
+            }],
+        };
+        let result = run_preset(&games, &meta, &[], &preset).unwrap();
+        let names: Vec<_> = result.changeset.create.iter().map(|c| c.name.clone()).collect();
+        assert_eq!(names.len(), 3, "localised and english genres must merge: {names:?}");
+        for expected in ["g_Action", "g_Simulation", "g_Free To Play"] {
+            let col = result
+                .changeset
+                .create
+                .iter()
+                .find(|c| c.name == expected)
+                .unwrap_or_else(|| panic!("missing {expected}: {names:?}"));
+            assert_eq!(col.app_ids.len(), 2, "{expected} should hold both games");
+        }
     }
 }
