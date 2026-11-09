@@ -1,0 +1,102 @@
+name: Release
+
+# 推送 v* 标签时自动打包并创建 GitHub Release
+# 产物: 便携版 exe + NSIS 安装包
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Sync version from tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          if ! [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "Tag must look like v1.2.3, got: $TAG"
+            exit 1
+          fi
+          node scripts/sync-version.mjs "$VER"
+          npm install --package-lock-only --ignore-scripts
+          echo "VERSION=$VER" >> "$GITHUB_ENV"
+          echo "Building version $VER from tag $TAG"
+
+      - name: Build portable and installer
+        run: npm run tauri build -- --bundles nsis
+
+      - name: Rename assets
+        shell: pwsh
+        run: |
+          $ver = $env:VERSION
+          $portable = "target\release\shelfmark.exe"
+          if (-not (Test-Path -LiteralPath $portable)) {
+            Get-ChildItem target\release -Filter *.exe -ErrorAction SilentlyContinue | Format-Table Name, Length
+            throw "Missing build output: $portable"
+          }
+          $portableName = "Shelfmark-$ver-windows-x64.exe"
+          Copy-Item -LiteralPath $portable -Destination $portableName -Force
+
+          $setup = "target\release\bundle\nsis\Shelfmark_${ver}_x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $setup)) {
+            Get-ChildItem target\release\bundle -Recurse -Filter *.exe -ErrorAction SilentlyContinue | Format-Table FullName, Length
+            throw "Missing installer: $setup"
+          }
+          $setupName = "Shelfmark_${ver}_x64-setup.exe"
+          Copy-Item -LiteralPath $setup -Destination $setupName -Force
+
+          Get-ChildItem $portableName, $setupName | Format-Table Name, Length
+          "ASSET_PORTABLE=$portableName" >> $env:GITHUB_ENV
+          "ASSET_SETUP=$setupName" >> $env:GITHUB_ENV
+
+      - name: Extract changelog section
+        shell: bash
+        run: |
+          node scripts/changelog-for-version.mjs "$VERSION" > release-notes.md
+          echo '----- release notes -----'
+          cat release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: |
+            ${{ env.ASSET_PORTABLE }}
+            ${{ env.ASSET_SETUP }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
