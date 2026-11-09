@@ -26,9 +26,9 @@
 - 只提交一次，不要 push
 - 不要改 `docs/feedback/`、`docs/tasks/07-*`、`docs/tasks/08-*`
 
+## 已知环境坑
 
-##  
-
-- 262144  0.8 tok/s������
-- �� Steam API ��
-- dialog ��dialog �������� disabled ��
+- **上下文长度**：模型设置里上下文开到 262144 后，生成速度掉到 0.8 tok/s。与代码无关，跑验收前先改回较小值，否则容易误判成程序卡死。
+- **并行数**：模型设置里的并行请求数开高会让多个请求同时排队，同样拖慢验收；跑验收前改回默认值。
+- **Steam 必须完全退出**：`export` 检测到 Steam 进程在运行会直接拒绝写盘（见 `tests/export_safety.rs::export_refuses_when_steam_running`）。本脚本只跑到「加入待导出」，写盘步骤留给人工确认。
+- **dialog 作用域**：`加入待导出` 在 dialog 内和页面背景各有一个同名按钮，背景那个是 disabled 的。驱动脚本必须先限定到 dialog 作用域再点，否则会点到背景那个并静默失败。
