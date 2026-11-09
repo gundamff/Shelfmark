@@ -81,10 +81,17 @@ impl SteamPlatform for WindowsSteamPlatform {
 mod tests {
     use super::*;
 
+    /// 依赖本机真实 Steam 安装，没有安装的环境（例如 CI runner）直接跳过。
     #[test]
     fn detects_local_steam_install() {
         let platform = WindowsSteamPlatform::new();
-        let root = platform.steam_root().expect("local Steam should exist");
+        let root = match platform.steam_root() {
+            Ok(root) => root,
+            Err(err) => {
+                eprintln!("skipping detects_local_steam_install: {err}");
+                return;
+            }
+        };
         assert!(root.is_dir(), "steam root missing: {}", root.display());
         // Known machine path from the developer environment.
         assert!(
